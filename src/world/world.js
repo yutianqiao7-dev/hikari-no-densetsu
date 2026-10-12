@@ -109,7 +109,7 @@ export class World {
       walkable: (x, z, y) => w.walkable(x, z, y),
       areaAt: (x, z) => w.areaAt(x, z),
       trigger: () => null,
-      encounter: (x, z, night) => encounterTable(x, z, night),
+      encounter: (x, z, night) => encounterTable(x, z, night, hf.height(x, z)),
       spawnPoint: (p) => {
         const a = Math.random() * Math.PI * 2, r = 34 + Math.random() * 30;
         const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;

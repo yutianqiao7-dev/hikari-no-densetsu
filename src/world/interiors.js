@@ -92,8 +92,8 @@ class Floor {
 
   encounter() {
     return this.style === 'cave'
-      ? { lv: 4, list: ['bat', 'bat_dark', 'mushroom_poison', 'golem', 'ghost', 'purun_red'] }
-      : { lv: 6, list: ['ghost_blue', 'golem', 'bat_dark', 'mushroom_poison', 'ghost_blue', 'ghost'] };
+      ? { lv: 4, list: ['bat', 'bat_dark', 'mushroom_poison', 'golem', 'ghost', 'purun_red', 'skeleton', 'snake_cobra', 'wisp'] }
+      : { lv: 6, list: ['ghost_blue', 'golem', 'bat_dark', 'ghost', 'skeleton_dark', 'gargoyle', 'wisp_blue', 'skeleton_dark', 'gargoyle'] };
   }
 
   /** モンスターの出現位置（プレイヤーから離れた床） */

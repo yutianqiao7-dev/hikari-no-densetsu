@@ -120,7 +120,7 @@ export class Battle {
   focusPoints(withAllies, actor) {
     const pts = [];
     for (const e of this.alive.length ? this.alive : this.enemies) {
-      const h = e.key === 'dragon' ? 6.2 : (e.m.kind === 'Bat' || e.m.kind === 'Ghost' ? 2.2 : 1.9) * (e.def.scale || 1);
+      const h = e.key === 'dragon' ? 6.2 : ({ Bat: 2.2, Ghost: 2.2, Wisp: 2.4, Gargoyle: 2.6, Skeleton: 2.1, Crab: 1.2, Snake: 1.6 }[e.m.kind] || 1.9) * (e.def.scale || 1);
       const r = e.key === 'dragon' ? 3.2 : 0.7 * (e.def.scale || 1);
       pts.push(e.home.clone().addScaledVector(this.right, r), e.home.clone().addScaledVector(this.right, -r), e.home.clone().add(V(0, h, 0)), e.home.clone());
     }
@@ -762,6 +762,14 @@ export class Battle {
           await hit(target, b < 1 ? rint(0, 1) : b);
         });
         break;
+      case 'strike':
+        await this.log.add(`${e.name}${def.skillText}`, 150);
+        await lunge(target, async () => {
+          this.shake = 1.0;
+          fx.emit({ pos: target.home.clone().add(V(0, 1.1, 0)), count: 30, color: [0xffffff, 0xffd0a0], speed: 4, life: 0.45, size: 0.22 });
+          await hit(target, Math.max(1, Math.round(base(target) * (def.skillMul || 1.4))));
+        });
+        break;
       case 'spore':
         await this.log.add(`${e.name}は あやしい ほうしを まきちらした！`, 150);
         audio.sfx('miss');
@@ -783,19 +791,21 @@ export class Battle {
       case 'fire': {
         await this.log.add(`${e.name}は ファイアを となえた！`, 150);
         audio.sfx('fire');
+        const warm = e.key === 'wisp';
+        const fc = warm ? [0xffd070, 0xff6a20, 0xffffff] : [0x8fb8ff, 0x3a6aff, 0xffffff];
         const from = e.home.clone().add(V(0, 1.6, 0)), to = target.home.clone().add(V(0, 1.1, 0)), t0 = performance.now();
         await new Promise((res) => {
           const step = () => {
             const k = Math.min(1, (performance.now() - t0) / 450);
             const b = from.clone().lerp(to, k);
-            fx.emit({ pos: b, count: 5, color: [0x8fb8ff, 0x3a6aff, 0xffffff], speed: 0.6, life: 0.35, size: 0.5 });
-            fx.flashLight(b, 0x6699ff, 20, 0.15);
+            fx.emit({ pos: b, count: 5, color: fc, speed: 0.6, life: 0.35, size: 0.5 });
+            fx.flashLight(b, warm ? 0xff8833 : 0x6699ff, 20, 0.15);
             if (k < 1) requestAnimationFrame(step); else res();
           };
           step();
         });
-        fx.emit({ pos: to, count: 50, color: [0x8fb8ff, 0x3a6aff, 0xffffff], speed: 4, life: 0.7, size: 0.5 });
-        await hit(target, rint(...(e.key === 'ghost_blue' ? [20, 28] : [9, 14])));
+        fx.emit({ pos: to, count: 50, color: fc, speed: 4, life: 0.7, size: 0.5 });
+        await hit(target, rint(...(e.key === 'ghost_blue' || e.key === 'wisp_blue' ? [20, 28] : [9, 14])));
         break;
       }
       case 'smash':

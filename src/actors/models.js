@@ -122,7 +122,11 @@ export class ModelLibrary {
         o.castShadow = true;
         o.receiveShadow = true;
         let mm = o.material.clone();
-        if (recolor && recolor[mm.name]) mm.color.set(recolor[mm.name]);
+        if (recolor && recolor[mm.name]) {
+          mm.color.set(recolor[mm.name]);
+          const e = mm.emissive;
+          if (e && (e.r || e.g || e.b)) e.set(recolor[mm.name]).multiplyScalar(Math.max(0.6, Math.max(e.r, e.g, e.b)));
+        }
         if (mm.name === 'Gel') mm = this.gelify(mm);
         o.material = mm;
         o.material.emissive = o.material.emissive || new THREE.Color();

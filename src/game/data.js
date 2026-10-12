@@ -8,6 +8,22 @@ export const MONSTERS = {
   bat_dark: { name: 'ヤミコウモリン', model: 'Mon_Bat', scale: 1.25, recolor: { BatFur: '#2c2536', BatBelly: '#6e5f74', BatWing: '#4a1218', BatEarIn: '#a03040' }, hp: 32, atk: 30, def: 16, agi: 22, exp: 24, gold: 22, skill: 'drain' },
   golem: { name: 'いわゴーレム', model: 'Mon_Golem', scale: 1.0, hp: 70, atk: 38, def: 32, agi: 4, exp: 48, gold: 42, skill: 'smash' },
   ghost_blue: { name: 'ゆらめきの霊', model: 'Mon_Ghost', scale: 1.3, recolor: { Ghost: '#8fd0ff', GhostSkirt: '#8fd0ff' }, hp: 48, atk: 34, def: 22, agi: 26, exp: 40, gold: 36, skill: 'fire' },
+  // ---- 森・草原
+  stump: { name: 'キリカブー', model: 'Mon_Stump', scale: 1.0, hp: 12, atk: 11, def: 7, agi: 3, exp: 4, gold: 6, skill: 'strike', skillText: 'は えだを むちのように しならせた！', skillMul: 1.3 },
+  snake: { name: 'アオコブラ', model: 'Mon_Snake', scale: 1.0, hp: 16, atk: 14, def: 6, agi: 12, exp: 6, gold: 7, skill: 'strike', skillText: 'は するどい きばで かみついた！', skillMul: 1.4 },
+  wolf: { name: 'キバウルフ', model: 'Mon_Wolf', scale: 1.0, hp: 26, atk: 20, def: 9, agi: 18, exp: 11, gold: 9, skill: 'strike', skillText: 'は のどもとに くらいついた！', skillMul: 1.45 },
+  stump_old: { name: 'ろうぼくキリカブー', model: 'Mon_Stump', scale: 1.3, recolor: { StumpBark: '#4c4038', StumpBarkDark: '#2a221c', StumpLeaf: '#9a7a2a', StumpEye: '#ff5030', StumpRing: '#b89a78' }, hp: 38, atk: 25, def: 22, agi: 4, exp: 20, gold: 18, skill: 'strike', skillText: 'は ふといえだを たたきつけた！', skillMul: 1.5 },
+  snake_cobra: { name: 'ドクコブラ', model: 'Mon_Snake', scale: 1.15, recolor: { SnakeScale: '#5c3a8a', SnakeScaleDark: '#2a1640', SnakeBelly: '#e8d070', SnakeIris: '#ff3030' }, hp: 30, atk: 27, def: 12, agi: 20, exp: 18, gold: 16, skill: 'strike', skillText: 'は もうどくの きばで かみついた！', skillMul: 1.45 },
+  wolf_silver: { name: 'ぎんろうウルフ', model: 'Mon_Wolf', scale: 1.15, recolor: { WolfFur: '#a9adb8', WolfFurDark: '#565b6a', WolfFurLight: '#f0f2f6' }, hp: 46, atk: 36, def: 18, agi: 30, exp: 34, gold: 26, skill: 'strike', skillText: 'は するどい キバで かみくだいた！', skillMul: 1.45 },
+  // ---- 浜辺
+  crab: { name: 'ハサミガニ', model: 'Mon_Crab', scale: 1.0, hp: 22, atk: 15, def: 16, agi: 5, exp: 8, gold: 10, skill: 'strike', skillText: 'は おおきな ハサミで はさみこんだ！', skillMul: 1.5 },
+  crab_armor: { name: 'よろいガニ', model: 'Mon_Crab', scale: 1.25, recolor: { CrabShell: '#3a6ea8', CrabShellDark: '#1c3560', CrabBelly: '#dfe8f0' }, hp: 44, atk: 30, def: 32, agi: 8, exp: 28, gold: 26, skill: 'strike', skillText: 'は はがねの ハサミで はさみこんだ！', skillMul: 1.5 },
+  // ---- 夜・ダンジョン
+  wisp: { name: 'おにび', model: 'Mon_Wisp', scale: 1.0, hp: 18, atk: 16, def: 10, agi: 20, exp: 12, gold: 12, skill: 'fire' },
+  wisp_blue: { name: 'あおおにび', model: 'Mon_Wisp', scale: 1.15, recolor: { FlameCore: '#d8f0ff', FlameMid: '#4a90ff' }, hp: 36, atk: 30, def: 20, agi: 32, exp: 30, gold: 28, skill: 'fire' },
+  skeleton: { name: 'ほねせんし', model: 'Mon_Skeleton', scale: 1.0, hp: 40, atk: 30, def: 18, agi: 14, exp: 26, gold: 24, skill: 'strike', skillText: 'は さびた つるぎで きりかかった！', skillMul: 1.35 },
+  skeleton_dark: { name: 'やみのほねせんし', model: 'Mon_Skeleton', scale: 1.1, recolor: { SkelBone: '#8a7f9c', SkelBoneDark: '#4a405a', SkullGlow: '#40a0ff', RustIron: '#2a2830', Rust: '#3a2a4a', SkelCloth: '#20304a' }, hp: 62, atk: 40, def: 26, agi: 20, exp: 46, gold: 40, skill: 'strike', skillText: 'は やみの つるぎで きりさいた！', skillMul: 1.4 },
+  gargoyle: { name: 'ガーゴイル', model: 'Mon_Gargoyle', scale: 1.0, hp: 58, atk: 38, def: 30, agi: 26, exp: 44, gold: 38, skill: 'strike', skillText: 'は きゅうこうかして ツメで きりさいた！', skillMul: 1.4 },
   guardian: {
     name: 'がんせきの番人', model: 'Mon_Golem', scale: 1.55, boss: true, guardian: true,
     recolor: { GolemRock: '#77708a', GolemRockDark: '#4c4860', Moss: '#5f8796' },
@@ -20,20 +36,22 @@ export const MONSTERS = {
 };
 
 /** 地域の危険度から出現テーブルを決める */
-export function encounterTable(x, z, night) {
+export function encounterTable(x, z, night, h = 10) {
   const d = Math.hypot(x - -40, z - 60);
   let lv = 1 + d / 75;
   if (z < -100) lv += 2;
   lv = Math.max(1, Math.min(6, Math.floor(lv)));
   const T = {
-    1: ['purun', 'purun', 'mushroom'],
-    2: ['purun', 'mushroom', 'bat', 'purun_red'],
-    3: ['mushroom', 'bat', 'purun_red', 'purun_red'],
-    4: ['bat', 'purun_red', 'mushroom_poison', 'ghost'],
-    5: ['mushroom_poison', 'bat_dark', 'ghost', 'golem'],
-    6: ['golem', 'bat_dark', 'ghost_blue', 'mushroom_poison'],
+    1: ['purun', 'purun', 'mushroom', 'stump'],
+    2: ['purun', 'mushroom', 'bat', 'purun_red', 'stump', 'snake'],
+    3: ['mushroom', 'bat', 'purun_red', 'snake', 'wolf', 'stump'],
+    4: ['bat', 'purun_red', 'mushroom_poison', 'ghost', 'wolf', 'snake_cobra', 'stump_old'],
+    5: ['mushroom_poison', 'bat_dark', 'ghost', 'golem', 'wolf_silver', 'snake_cobra', 'stump_old'],
+    6: ['golem', 'bat_dark', 'ghost_blue', 'mushroom_poison', 'wolf_silver', 'skeleton'],
   }[lv].slice();
-  if (night) T.push(lv >= 4 ? 'ghost_blue' : 'ghost', 'ghost');
+  // 浜辺ではカニが多い
+  if (h < 2.6) T.push(...(lv >= 4 ? ['crab_armor', 'crab_armor', 'crab'] : ['crab', 'crab', 'crab']));
+  if (night) T.push(...(lv >= 4 ? ['ghost_blue', 'wisp', 'skeleton'] : ['ghost', 'wisp']));
   return { lv, list: T };
 }
 

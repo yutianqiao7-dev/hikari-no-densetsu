@@ -459,7 +459,7 @@ export class Field {
       if (m.fadeIn < 1 && !m.leaving) { m.fadeIn = Math.min(1, m.fadeIn + dt * 1.5); m.setOpacity(m.fadeIn); }
       if (m.leaving) m.setOpacity(Math.max(0, m.opacity - dt * 1.5));
       let sp = 0;
-      const fast = m.kind === 'Bat' ? 5.2 : m.kind === 'Golem' ? 2.6 : m.kind === 'Ghost' ? 3.8 : 4.0;
+      const fast = { Bat: 5.2, Golem: 2.6, Ghost: 3.8, Wolf: 5.6, Crab: 3.0, Stump: 3.0, Skeleton: 3.6, Wisp: 4.4, Snake: 3.8, Gargoyle: 5.0 }[m.kind] || 4.0;
       if (!inSafe && this.safeT <= 0 && dist < (this.inField ? 15 : 11) && !m.leaving) {
         m.state = 'chase';
         sp = fast;
