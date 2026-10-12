@@ -8,6 +8,11 @@ export const MONSTERS = {
   bat_dark: { name: 'ヤミコウモリン', model: 'Mon_Bat', scale: 1.25, recolor: { BatFur: '#2c2536', BatBelly: '#6e5f74', BatWing: '#4a1218', BatEarIn: '#a03040' }, hp: 32, atk: 30, def: 16, agi: 22, exp: 24, gold: 22, skill: 'drain' },
   golem: { name: 'いわゴーレム', model: 'Mon_Golem', scale: 1.0, hp: 70, atk: 38, def: 32, agi: 4, exp: 48, gold: 42, skill: 'smash' },
   ghost_blue: { name: 'ゆらめきの霊', model: 'Mon_Ghost', scale: 1.3, recolor: { Ghost: '#8fd0ff', GhostSkirt: '#8fd0ff' }, hp: 48, atk: 34, def: 22, agi: 26, exp: 40, gold: 36, skill: 'fire' },
+  guardian: {
+    name: 'がんせきの番人', model: 'Mon_Golem', scale: 1.55, boss: true, guardian: true,
+    recolor: { GolemRock: '#77708a', GolemRockDark: '#4c4860', Moss: '#5f8796' },
+    hp: 190, atk: 44, def: 30, agi: 10, exp: 160, gold: 260, skill: 'smash',
+  },
   dragon: {
     name: '魔竜ヴァルザード', model: 'Mon_Dragon', scale: 1.15, boss: true,
     hp: 520, atk: 60, def: 42, agi: 34, exp: 0, gold: 0, skill: 'breath',
@@ -62,6 +67,21 @@ export const EQUIP = {
   shield_light: { name: 'ひかりのたて', slot: 'shield', def: 20, price: 2600 },
 };
 
+/** 宝箱の中身（フロアID-番号） */
+export const CHESTS = {
+  'cave1-0': { item: 'herb', n: 3 },
+  'cave1-1': { gold: 180 },
+  'cave1-2': { equip: 'shield_iron' },
+  'cave1-3': { item: 'ether', n: 1 },
+  'cave2-0': { equip: 'sword_steel' },
+  'cave2-1': { gold: 350 },
+  'tower1-0': { item: 'ether', n: 2 },
+  'tower1-1': { item: 'herb', n: 4 },
+  'tower2-0': { equip: 'armor_steel' },
+  'tower2-1': { gold: 600 },
+  'tower2-2': { equip: 'sword_light' },
+};
+
 export const SHOP = ['herb', 'ether', 'wing', 'sword_iron', 'sword_steel', 'sword_light', 'armor_leather', 'armor_chain', 'armor_steel', 'shield_iron', 'shield_light'];
 
 export const MAX_LV = 20;
@@ -95,7 +115,8 @@ export const TALK = {
         { who: '王さま', text: 'どうか 魔竜を たおし、 この国に ひかりを とりもどしてくれ！' },
         { who: '王さま', text: 'わずかだが たびの しきんじゃ。 うけとるがよい。' },
         { text: `${s.name}は 120ゴールドと やくそうを 3こ うけとった！`, se: 'item' },
-        { who: '王さま', text: 'ひがしの ミナトの村で そうびを ととのえるのじゃ。 では ゆけ、 ゆうしゃよ！' },
+        { who: '王さま', text: 'ひがしの ミナトの村で そうびを ととのえるのじゃ。 村の 長老なら 塔への みちを しっておろう。' },
+        { who: '王さま', text: 'では ゆけ、 ゆうしゃよ！' },
       ];
     }
     const need = s.lv >= MAX_LV ? 0 : expForLevel(s.lv + 1) - s.exp;
@@ -116,9 +137,13 @@ export const TALK = {
     { who: '大臣', text: 'ゆうしゃどの。 まものの すがたが みえたら、 ぶつかると たたかいに なりますぞ。' },
     { who: '大臣', text: 'つよい まものからは にげるのも ゆうきの ひとつ。 ちょうしに のりすぎぬ ことですな。' },
   ],
-  Elder: () => [
-    { who: '長老', text: 'まおうの塔は きたの やまの おく。 城の まえの みちを ずっと きたへ すすむのじゃ。' },
+  Elder: (g) => g.state.flags.orb ? [
+    { who: '長老', text: 'おお、 それは ひかりのオーブ！ それが あれば まおうの塔の ふういんも とけるじゃろう。' },
     { who: '長老', text: '魔竜の ほのおは すさまじい。 レベル 13は ほしいところじゃな。 ハイヒールを おぼえて おくとよい。' },
+  ] : [
+    { who: '長老', text: 'まおうの塔の とびらは やみの ふういんで とざされておる。' },
+    { who: '長老', text: 'にしの いわやまの ふもとに 「ほこらの洞窟」が ある。 その おくに ねむる 「ひかりのオーブ」なら ふういんを やぶれるはずじゃ。' },
+    { who: '長老', text: 'ただし オーブは いわの 番人が まもっておる。 じゅうぶん つよく なってから いくのじゃぞ。 レベル 8は ほしいの。' },
   ],
   Girl: (g) => [{ who: 'むすめ', text: g.sky.night > 0.5 ? 'よるに なると ゴーストが でるんだって。 こわーい！' : 'ねえねえ、 そらの くもって たべられるのかなあ？' }],
   Villager1: () => [{ who: 'むらびと', text: 'やくそうは だいじに つかえよ。 HPが あかく なったら すぐ つかうんだ。' }],
@@ -126,4 +151,5 @@ export const TALK = {
   Sign1: () => [{ text: '「 ↑ まおうの塔　　→ ミナトの村 」' }],
   Sign2: () => [{ text: '「 ← アルセリア城　　↑ まおうの塔 」\nこのさき まものが つよくなる。' }],
   Sign3: () => [{ text: '「 ミナトの村 　やすらぎと たびの みなと 」' }],
+  Sign4: () => [{ text: '「 ↖ ほこらの洞窟　　↑ まおうの塔 」' }],
 };

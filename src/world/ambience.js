@@ -49,6 +49,7 @@ export class Ambience {
         void main() { vec4 t = texture2D(map, gl_PointCoord); gl_FragColor = vec4(uColor, t.a * vA); }`,
     });
     const pts = new THREE.Points(geo, this.mat);
+    this.points = pts;
     pts.frustumCulled = false;
     pts.renderOrder = 5;
     scene.add(pts);
@@ -66,9 +67,16 @@ export class Ambience {
     this.assignT = 0;
   }
 
+  setVisible(v) {
+    this.points.visible = v;
+    if (!v) for (const l of this.lights) { l.intensity = 0; l.visible = false; }
+    this.hidden = !v;
+  }
+
   setViewport(h) { this.mat.uniforms.uScale.value = h * 0.9; }
 
   update(dt, t, cam, sky) {
+    if (this.hidden) return;
     // 煙
     this.emitT -= dt;
     if (this.emitT <= 0) {
@@ -108,7 +116,7 @@ export class Ambience {
       const sorted = this.lamps.map((p) => [p.distanceToSquared(cam), p]).sort((x, y) => x[0] - y[0]);
       this.lights.forEach((l, i) => {
         const e = sorted[i];
-        if (e && e[0] < 90 * 90) { l.position.copy(e[1]); l.visible = true; } else l.visible = false;
+        if (e && e[0] < 90 * 90 && !this.hidden) { l.position.copy(e[1]); l.visible = true; } else l.visible = false;
       });
     }
     this.lights.forEach((l, i) => { l.intensity = on * (14 + Math.sin(t * 13 + i * 7) * 0.8 + Math.sin(t * 5.3 + i) * 0.6); });

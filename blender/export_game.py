@@ -59,6 +59,8 @@ if bpy.context.window:
 export_glb([bpy.data.collections["Terrain"], bpy.data.collections["Buildings"]], os.path.join(OUT, "world.glb"))
 export_glb([bpy.data.collections["Prototypes"]], os.path.join(OUT, "props.glb"), vcol='NONE')
 export_glb([bpy.data.collections["Characters"]], os.path.join(OUT, "characters.glb"), vcol='NONE', anim=True)
+if "Interiors" in bpy.data.collections:
+    export_glb([bpy.data.collections["Interiors"]], os.path.join(OUT, "interiors.glb"), vcol='NONE')
 
 # ---- world.json
 terrain = bpy.data.objects["Terrain"]
@@ -97,6 +99,7 @@ data = {
     "scatter": scatter,
     "colliders": colliders,
     "markers": markers,
+    "interiors": json.loads(bpy.data.collections["Interiors"]["data"]) if "Interiors" in bpy.data.collections else None,
 }
 with open(os.path.join(OUT, "world.json"), "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, separators=(",", ":"))

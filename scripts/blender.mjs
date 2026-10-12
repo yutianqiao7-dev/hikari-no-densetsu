@@ -34,7 +34,7 @@ const mode = process.argv[2] || 'export';
 const blend = join(bdir, 'world.blend');
 if (mode === 'rebuild') {
   run(['-b', '--factory-startup',
-    '--python', 'build_world.py', '--python', 'build_characters.py', '--python', 'build_monsters.py',
+    '--python', 'build_world.py', '--python', 'build_characters.py', '--python', 'build_monsters.py', '--python', 'build_interiors.py',
     '--python-expr', `import bpy; bpy.ops.wm.save_as_mainfile(filepath=r"${blend}")`]);
 }
 run(['-b', blend, '--python', 'export_game.py']);

@@ -1,4 +1,12 @@
+import * as THREE from 'three';
 import { NOISE } from './glsl.js';
+
+/** ダンジョンでカメラと勇者の間の壁を切り抜くための共有 uniform */
+export const CUT = {
+  uCutCam: { value: new THREE.Vector3() },
+  uCutTarget: { value: new THREE.Vector3() },
+  uCutOn: { value: 0 },
+};
 
 /**
  * Blender から来た単色マテリアルに、ワールド座標ベースのプロシージャル模様を足す。
@@ -46,6 +54,21 @@ const PATTERNS = {
     diffuseColor.rgb *= 0.78 + grain * 0.22 + (vnoise(vW.xy * 4.0 + vW.zz) - 0.5) * 0.15;
     vRough = 0.85;
   `,
+  rock: /* glsl */`
+    vec3 ap = abs(vN);
+    vec2 uv = ap.y > 0.7 ? vW.xz : (ap.x > ap.z ? vW.zy : vW.xy);
+    float f1 = fbm3(uv * 0.35), f2 = vnoise(uv * 2.2), f3 = vnoise(uv * 7.0);
+    float strata = sin(vW.y * 2.3 + f1 * 6.0) * 0.5 + 0.5;
+    vec3 c = diffuseColor.rgb * (0.7 + f1 * 0.45) * (0.85 + f2 * 0.25) * (0.92 + f3 * 0.12);
+    c *= 0.85 + strata * 0.2;
+    // しめった筋と、床のあたりの苔
+    float wet = smoothstep(0.62, 0.8, vnoise(vec2(uv.x * 1.5, vW.y * 0.15)));
+    c = mix(c, c * 0.6, wet * (ap.y < 0.7 ? 1.0 : 0.0));
+    float moss = smoothstep(0.55, 0.75, fbm3(uv * 0.6 + 3.0)) * smoothstep(1.6, 0.0, vW.y) ;
+    c = mix(c, vec3(0.16, 0.24, 0.12), moss * 0.5);
+    diffuseColor.rgb = c;
+    vRough = mix(1.0, 0.45, wet);
+  `,
   plaster: /* glsl */`
     float n = fbm3(vW.xy * 0.8 + vW.zx * 0.8);
     float stain = smoothstep(0.55, 0.85, fbm3(vec2(vW.x + vW.z, vW.y * 2.5) * 0.35));
@@ -57,15 +80,26 @@ const PATTERNS = {
   `,
 };
 
+const CUT_GLSL = /* glsl */`
+    if (uCutOn > 0.5 && vW.y > 0.35) {
+      vec3 ab = uCutTarget - uCutCam;
+      float tt = clamp(dot(vW - uCutCam, ab) / dot(ab, ab), 0.0, 1.0);
+      float dd = length(vW - (uCutCam + ab * tt));
+      float dith = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+      if (tt < 0.96 && dd < 3.2 && dith > smoothstep(3.2, 2.2, dd) * -1.0 + 1.0) discard;
+    }
+`;
+
 function kindOf(name) {
-  if (/^(Stone|StoneDark|TowerStone)$/.test(name)) return 'stone';
+  if (/^(Stone|StoneDark|TowerStone|StoneFloor)$/.test(name)) return 'stone';
+  if (/^(CaveRock|CaveRockDark|CaveFloor)$/.test(name)) return 'rock';
   if (/^Roof|TowerRoof/.test(name)) return 'roof';
   if (/^(Wood|WoodDark|Bark|Door)$/.test(name)) return 'wood';
   if (/^Plaster$/.test(name)) return 'plaster';
   return null;
 }
 
-export function enhanceSurface(mat, heightTex, uvParams) {
+export function enhanceSurface(mat, heightTex, uvParams, cut = false) {
   const kind = kindOf(mat.name || '');
   if (!kind || mat.userData.enhanced) return;
   mat.userData.enhanced = true;
@@ -73,6 +107,7 @@ export function enhanceSurface(mat, heightTex, uvParams) {
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uHeightT = { value: heightTex };
     sh.uniforms.uHFp = { value: uvParams };
+    if (cut) Object.assign(sh.uniforms, CUT);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vW;\nvarying vec3 vN;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvN = normalize(mat3(modelMatrix) * objectNormal);');
@@ -80,9 +115,10 @@ export function enhanceSurface(mat, heightTex, uvParams) {
       .replace('#include <common>', `#include <common>\nvarying vec3 vW;\nvarying vec3 vN;\nfloat vRough = 1.0;\n${NOISE}\nuniform sampler2D uHeightT;
 uniform vec4 uHFp;
 float uGround(vec3 p) { return texture2D(uHeightT, ((p.xz + uHFp.x) / uHFp.y + 0.5) / uHFp.z).r; }`)
-      .replace('#include <color_fragment>', `#include <color_fragment>\n${PATTERNS[kind]}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${cut ? CUT_GLSL : ''}\n${PATTERNS[kind]}`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= vRough;');
+    if (cut) sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uCutCam;\nuniform vec3 uCutTarget;\nuniform float uCutOn;');
   };
-  mat.customProgramCacheKey = () => 'surface-' + kind;
+  mat.customProgramCacheKey = () => 'surface-' + kind + (cut ? '-cut' : '');
   mat.needsUpdate = true;
 }

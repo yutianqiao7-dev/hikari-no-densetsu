@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Humanoid, Monster, angDiff } from '../actors/actor.js';
-import { MONSTERS, encounterTable } from './data.js';
+import { MONSTERS } from './data.js';
 import { AREAS } from '../world/world.js';
 
 const NPC_MODELS = {
@@ -9,6 +9,10 @@ const NPC_MODELS = {
 };
 const WANDER = new Set(['Girl', 'Villager1', 'Villager2', 'Minister']);
 
+/**
+ * 勇者の操作・カメラ・NPC・徘徊モンスター・話しかけ。
+ * 現在いる場所（フィールド／ダンジョンの各フロア）は env で切り替える。
+ */
 export class Field {
   constructor(game) {
     this.g = game;
@@ -16,6 +20,7 @@ export class Field {
     this.world = world;
     this.scene = scene;
     this.camera = game.camera;
+    this.env = world.fieldEnv;
 
     // 勇者
     this.hero = new Humanoid(world.lib, 'Hero');
@@ -39,16 +44,19 @@ export class Field {
       scene.add(h.root);
       this.npcs.push({ id: mk, h, home: m.pos.clone(), pos: m.pos.clone(), rot: m.rot, baseRot: m.rot, wander: WANDER.has(mk), target: null, wait: Math.random() * 4, talking: false });
     }
-    this.signs = ['Sign1', 'Sign2', 'Sign3'].map((id) => ({ id, pos: world.marker(id).pos }));
+    this.signs = ['Sign1', 'Sign2', 'Sign3', 'Sign4'].map((id) => world.marker(id) && { id, pos: world.marker(id).pos }).filter(Boolean);
+    this.doors = [
+      { id: 'cave', m: world.marker('CaveEntrance') },
+      { id: 'tower', m: world.marker('TowerDoor') },
+    ].filter((d) => d.m);
 
-    // ボス
-    const bm = world.marker('Boss');
+    // 魔竜（まおうの塔 3F）・がんせきの番人（洞窟 B2）
     this.boss = new Monster(world.lib, MONSTERS.dragon);
-    this.boss.root.position.copy(bm.pos).add(new THREE.Vector3(0, 0, 7));
-    this.boss.root.position.y = world.hf.height(this.boss.root.position.x, this.boss.root.position.z);
-    this.boss.root.rotation.y = bm.rot;
-    this.bossMarker = { pos: this.boss.root.position.clone(), rot: bm.rot };
+    this.boss.root.visible = false;
     scene.add(this.boss.root);
+    this.guardian = new Monster(world.lib, MONSTERS.guardian);
+    this.guardian.root.visible = false;
+    scene.add(this.guardian.root);
 
     // シンボルエンカウントのモンスター
     this.mons = [];
@@ -56,16 +64,47 @@ export class Field {
     this.safeT = 0;
     this.stepT = 0;
     this.area = null;
+    this.nearDoor = null;
     this.hint = document.createElement('div');
     this.hint.className = 'talk-hint hidden';
     game.ui.root.appendChild(this.hint);
   }
 
+  get inField() { return this.env.kind === 'field'; }
+
+  /** 場所の切り替え */
+  setEnv(env) {
+    this.env = env;
+    this.clearMonsters();
+    const field = env.kind === 'field';
+    for (const n of this.npcs) n.h.root.visible = field;
+    this.placeBosses();
+  }
+
+  placeBosses() {
+    const env = this.env, fl = this.g.state ? this.g.state.flags : {};
+    const at = (spot) => {
+      const s = env.spots && env.spots[spot];
+      if (!s) return null;
+      const x = s.reduce((a, p) => a + p[0], 0) / s.length, z = s.reduce((a, p) => a + p[1], 0) / s.length;
+      return new THREE.Vector3(x, 0, z);
+    };
+    const bp = env.id === 'tower3' ? at('B') : null;
+    this.boss.root.visible = !!bp && !fl.cleared;
+    if (bp) { this.boss.root.position.copy(bp).add(new THREE.Vector3(0, 0, -1)); this.boss.root.rotation.y = 0; }
+    const gp = env.id === 'cave2' ? at('B') : null;
+    this.guardian.root.visible = !!gp && !fl.guardian;
+    if (gp) { this.guardian.root.position.copy(gp); this.guardian.root.rotation.y = Math.PI; }
+    this.bossPos = bp;
+    this.guardianPos = gp;
+  }
+
   place(pos, rot) {
     this.pos.copy(pos);
-    this.pos.y = this.world.hf.height(pos.x, pos.z);
+    this.pos.y = this.env.height(pos.x, pos.z);
     this.facing = rot;
     this.cam.yaw = rot + Math.PI;
+    this.vel.set(0, 0, 0);
     this.hero.root.position.copy(this.pos);
     this.hero.root.rotation.y = rot;
     this.snapCamera();
@@ -78,15 +117,16 @@ export class Field {
 
   setVisible(v) {
     this.visibleAll = v;
-    for (const n of this.npcs) n.h.root.visible = v;
+    for (const n of this.npcs) n.h.root.visible = v && this.inField;
     for (const m of this.mons) m.root.visible = v;
-    this.boss.root.visible = v && !this.g.state.flags.cleared;
+    if (v) this.placeBosses();
+    else { this.boss.root.visible = this.guardian.root.visible = false; }
     if (!v) this.hint.classList.add('hidden');
   }
 
   // ------------------------------------------------------------ 毎フレーム
   update(dt, t, mv, inputCam) {
-    const w = this.world;
+    const env = this.env;
     // カメラ入力
     if (inputCam.yaw || inputCam.pitch) this.cam.lastManual = t;
     this.cam.yaw += inputCam.yaw;
@@ -103,6 +143,7 @@ export class Field {
     let speed = 0;
     if (len > 0.05) {
       speed = len < 0.6 ? THREE.MathUtils.mapLinear(len, 0.05, 0.6, 0.8, 2.2) : THREE.MathUtils.mapLinear(len, 0.6, 1, 4.2, 7.2);
+      if (!this.inField) speed = Math.min(speed, 6.0);
       const d = Math.hypot(dx, dz);
       dx /= d; dz /= d;
       const target = Math.atan2(dx, dz);
@@ -111,20 +152,19 @@ export class Field {
     const want = new THREE.Vector3(dx * speed, 0, dz * speed);
     this.vel.lerp(want, Math.min(1, dt * (speed > 0 ? 10 : 14)));
     const next = this.pos.clone().addScaledVector(this.vel, dt);
-    if (w.walkable(next.x, next.z, this.pos.y)) {
-      w.colliders.resolve(next, 0.42);
-      for (const n of this.npcs) this.pushOut(next, n.pos, 0.85);
-      if (!this.g.state.flags.cleared) this.pushOut(next, this.boss.root.position, 3.2);
-      if (w.walkable(next.x, next.z, this.pos.y)) { this.pos.x = next.x; this.pos.z = next.z; }
+    if (env.walkable(next.x, next.z, this.pos.y)) {
+      env.colliders.resolve(next, 0.42);
+      if (this.inField) for (const n of this.npcs) this.pushOut(next, n.pos, 0.85);
+      if (this.boss.root.visible) this.pushOut(next, this.boss.root.position, 4.0);
+      if (this.guardian.root.visible) this.pushOut(next, this.guardian.root.position, 2.2);
+      if (env.walkable(next.x, next.z, this.pos.y)) { this.pos.x = next.x; this.pos.z = next.z; }
     } else {
-      // 斜面・水際ではすべるように
-      const tx = this.pos.clone(); tx.x = next.x;
-      const tz = this.pos.clone(); tz.z = next.z;
-      if (w.walkable(tx.x, tx.z, this.pos.y)) this.pos.x = tx.x;
-      else if (w.walkable(tz.x, tz.z, this.pos.y)) this.pos.z = tz.z;
+      // 壁・斜面・水際ではすべるように
+      if (env.walkable(next.x, this.pos.z, this.pos.y)) this.pos.x = next.x;
+      else if (env.walkable(this.pos.x, next.z, this.pos.y)) this.pos.z = next.z;
       this.vel.multiplyScalar(0.5);
     }
-    const gy = w.hf.height(this.pos.x, this.pos.z);
+    const gy = env.height(this.pos.x, this.pos.z);
     this.pos.y += (gy - this.pos.y) * Math.min(1, dt * 18);
     this.hero.root.position.copy(this.pos);
     this.hero.root.rotation.y = this.facing;
@@ -137,27 +177,37 @@ export class Field {
       if (this.stepT <= 0) {
         this.stepT = this.hero.speed > 3.6 ? 1.35 : 0.75;
         this.g.audio.sfx('step');
-        if (this.hero.speed > 3.6) this.g.fx.emit({ pos: this.pos.clone().add(new THREE.Vector3(0, 0.1, 0)), count: 3, color: 0xb8a888, speed: 0.6, up: 0.4, life: 0.7, size: 0.35, grow: 1.5, drag: 2 });
+        if (this.hero.speed > 3.6) this.g.fx.emit({ pos: this.pos.clone().add(new THREE.Vector3(0, 0.1, 0)), count: 3, color: this.inField ? 0xb8a888 : 0x6a625a, speed: 0.6, up: 0.4, life: 0.7, size: 0.35, grow: 1.5, drag: 2 });
       }
     }
 
-    // カメラの自動追従（操作していないときは背中側へゆっくり回る）
+    // カメラの自動追従
     if (this.hero.speed > 2 && t - this.cam.lastManual > 1.6) {
       this.cam.yaw += angDiff(this.cam.yaw, this.facing + Math.PI) * Math.min(1, dt * 0.9);
     }
     this.updateCamera(dt);
 
-    // NPC
-    for (const n of this.npcs) this.updateNpc(n, dt);
-    this.boss.root.visible = !this.g.state.flags.cleared;
+    // NPC・ボス
+    if (this.inField) for (const n of this.npcs) this.updateNpc(n, dt);
     if (this.boss.root.visible) this.boss.update(dt);
+    if (this.guardian.root.visible) this.guardian.update(dt);
 
-    // エリア
-    const area = w.areaAt(this.pos.x, this.pos.z);
-    if (area !== this.area) {
-      this.area = area;
-      if (area) this.g.ui.showBanner(AREAS[area].name);
-      this.g.updateMusic();
+    if (this.inField) {
+      // エリア名と BGM
+      const area = env.areaAt(this.pos.x, this.pos.z);
+      if (area !== this.area) {
+        this.area = area;
+        if (area) this.g.ui.showBanner(AREAS[area].name);
+        this.g.updateMusic();
+      }
+      // 洞窟の入口・塔の扉
+      let near = null;
+      for (const d of this.doors) if (Math.hypot(this.pos.x - d.m.pos.x, this.pos.z - d.m.pos.z) < 1.9) near = d.id;
+      if (near && near !== this.nearDoor) { this.nearDoor = near; this.g.onDoor(near); return; }
+      this.nearDoor = near;
+    } else {
+      const tr = env.trigger(this.pos.x, this.pos.z);
+      if (tr) { this.g.onTrigger(tr); return; }
     }
 
     this.updateMonsters(dt, t);
@@ -170,29 +220,34 @@ export class Field {
   }
 
   updateCamera(dt, snap = false) {
-    const c = this.cam;
+    const c = this.cam, env = this.env;
     const tgt = this.pos.clone().add(new THREE.Vector3(0, 1.35, 0));
     c.target.lerp(tgt, snap ? 1 : Math.min(1, dt * 8));
-    const cp = Math.cos(c.pitch), sp = Math.sin(c.pitch);
-    const want = c.target.clone().add(new THREE.Vector3(Math.sin(c.yaw) * cp * c.dist, sp * c.dist + 0.4, Math.cos(c.yaw) * cp * c.dist));
-    // 木の葉の中にカメラが入らないよう、目標からカメラへ向かって樹冠に当たったら手前に寄せる
-    const dirv = want.clone().sub(c.target);
-    const full = dirv.length();
-    dirv.divideScalar(full);
-    let lim = full;
-    for (let k = 1; k <= 12; k++) {
-      const d = (k / 12) * full;
-      const q = c.target.clone().addScaledVector(dirv, d);
-      for (const t of this.world.colliders.near(q.x, q.z)) {
-        if (!t.tree) continue;
-        const cy = t.y + 4.2 * t.tree, cr = 2.6 * t.tree;
-        const dx = q.x - t.x, dz = q.z - t.z, dy = (q.y - cy) * 1.3;
-        if (dx * dx + dz * dz + dy * dy < cr * cr) { lim = Math.min(lim, Math.max(2.2, d - 0.8)); break; }
+    // ダンジョンでは壁越しに見下ろす角度・距離に制限
+    const pitch = this.inField ? c.pitch : Math.max(c.pitch, 0.95);
+    const dist = this.inField ? c.dist : Math.min(c.dist, 11);
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const want = c.target.clone().add(new THREE.Vector3(Math.sin(c.yaw) * cp * dist, sp * dist + 0.4, Math.cos(c.yaw) * cp * dist));
+    if (this.inField) {
+      // 木の葉の中にカメラが入らないよう、樹冠に当たったら手前に寄せる
+      const dirv = want.clone().sub(c.target);
+      const full = dirv.length();
+      dirv.divideScalar(full);
+      let lim = full;
+      for (let k = 1; k <= 12; k++) {
+        const d = (k / 12) * full;
+        const q = c.target.clone().addScaledVector(dirv, d);
+        for (const t of env.colliders.near(q.x, q.z)) {
+          if (!t.tree) continue;
+          const cy = t.y + 4.2 * t.tree, cr = 2.6 * t.tree;
+          const dx = q.x - t.x, dz = q.z - t.z, dy = (q.y - cy) * 1.3;
+          if (dx * dx + dz * dz + dy * dy < cr * cr) { lim = Math.min(lim, Math.max(2.2, d - 0.8)); break; }
+        }
+        if (lim < full) break;
       }
-      if (lim < full) break;
+      if (lim < full) want.copy(c.target).addScaledVector(dirv, lim);
     }
-    if (lim < full) want.copy(c.target).addScaledVector(dirv, lim);
-    const gh = this.world.hf.height(want.x, want.z) + 0.6;
+    const gh = env.height(want.x, want.z) + 0.6;
     if (want.y < gh) want.y = gh;
     this.camPos.lerp(want, snap ? 1 : Math.min(1, dt * 10));
     this.camera.position.copy(this.camPos);
@@ -200,7 +255,7 @@ export class Field {
   }
 
   updateNpc(n, dt) {
-    const h = n.h;
+    const h = n.h, w = this.world;
     let speed = 0;
     if (n.talking) {
       const want = Math.atan2(this.pos.x - n.pos.x, this.pos.z - n.pos.z);
@@ -216,9 +271,9 @@ export class Field {
           d.normalize();
           n.rot += angDiff(n.rot, Math.atan2(d.x, d.z)) * Math.min(1, dt * 5);
           const nx = n.pos.clone().addScaledVector(d, speed * dt);
-          if (this.world.colliders.resolve(nx, 0.4)) n.target = null;
+          if (w.colliders.resolve(nx, 0.4)) n.target = null;
           if (nx.distanceTo(this.pos) > 1.0) n.pos.copy(nx);
-          n.pos.y = this.world.hf.height(n.pos.x, n.pos.z);
+          n.pos.y = w.hf.height(n.pos.x, n.pos.z);
         }
       } else {
         n.wait -= dt;
@@ -235,59 +290,66 @@ export class Field {
     h.speed = speed;
     // 遠くの NPC は描かない・動かさない（スマホ向けの軽量化）
     const d2 = n.pos.distanceToSquared(this.camera.position);
-    h.root.visible = this.visibleAll !== false && d2 < 95 * 95;
+    h.root.visible = this.visibleAll !== false && this.inField && d2 < 95 * 95;
     if (d2 < 70 * 70) h.update(dt);
   }
 
-  /** 前方の話しかけられる相手 */
+  /** 前方の話しかけられる相手・調べられる物 */
   findInteract() {
-    let best = null, bd = 3.0;
+    let best = null, bd = 99;
     const fwd = new THREE.Vector3(Math.sin(this.facing), 0, Math.cos(this.facing));
-    const check = (id, p, range = 3.0, kind = 'npc', obj = null) => {
+    const fl = this.g.state ? this.g.state.flags : {};
+    const check = (id, p, range, kind, obj = null) => {
       const d = new THREE.Vector3().subVectors(p, this.pos);
       d.y = 0;
       const dist = d.length();
       if (dist > range) return;
-      if (dist > 0.6 && d.normalize().dot(fwd) < 0.2) return;
+      if (dist > 0.8 && d.normalize().dot(fwd) < 0.2) return;
       if (dist < bd) { bd = dist; best = { id, kind, obj, pos: p }; }
     };
-    for (const n of this.npcs) check(n.id, n.pos, 3.0, 'npc', n);
-    for (const s of this.signs) check(s.id, s.pos, 2.4, 'sign');
-    if (!this.g.state.flags.cleared) check('Boss', this.bossMarker.pos, 9, 'boss');
+    if (this.inField) {
+      for (const n of this.npcs) check(n.id, n.pos, 3.0, 'npc', n);
+      for (const s of this.signs) check(s.id, s.pos, 2.4, 'sign');
+    } else {
+      const env = this.env;
+      for (const c of env.chests) if (!(fl.chests && fl.chests[c.id])) check(c.id, c.pos, 2.4, 'chest', c);
+      if (env.orb && env.orb.visible) check('orb', env.orb.getWorldPosition(new THREE.Vector3()).setY(0), 2.8, 'orb');
+      if (this.guardian.root.visible) check('guardian', this.guardian.root.position, 5.5, 'guardian');
+      if (this.boss.root.visible) check('Boss', this.boss.root.position, 10, 'boss');
+    }
     return best;
   }
 
   updateHint() {
     const it = this.g.ui.busy ? null : this.findInteract();
     if (!it) { this.hint.classList.add('hidden'); return; }
-    const p = it.pos.clone().add(new THREE.Vector3(0, it.kind === 'sign' ? 2.4 : it.kind === 'boss' ? 6 : 2.2, 0)).project(this.camera);
+    const hy = { sign: 2.4, boss: 6, guardian: 4.2, chest: 1.6, orb: 2.4 }[it.kind] || 2.2;
+    const p = it.pos.clone().add(new THREE.Vector3(0, hy, 0)).project(this.camera);
     if (p.z > 1) { this.hint.classList.add('hidden'); return; }
     this.hint.classList.remove('hidden');
-    this.hint.textContent = it.kind === 'sign' ? 'しらべる' : it.kind === 'boss' ? 'たちむかう' : 'はなす';
+    this.hint.textContent = { sign: 'しらべる', boss: 'たちむかう', guardian: 'たちむかう', chest: 'あける', orb: 'しらべる' }[it.kind] || 'はなす';
     this.hint.style.left = ((p.x + 1) / 2) * window.innerWidth + 'px';
     this.hint.style.top = ((1 - p.y) / 2) * window.innerHeight + 'px';
   }
 
   // ------------------------------------------------------------ モンスター
-  updateMonsters(dt, t) {
-    const w = this.world;
+  updateMonsters(dt) {
+    const env = this.env;
     const night = this.g.sky.night > 0.5;
     this.safeT = Math.max(0, this.safeT - dt);
-    const inSafe = !!this.area && this.area !== 'tower';
+    const inSafe = this.inField && !!this.area && this.area !== 'tower';
+    const maxMons = this.inField ? 7 : 5;
     this.spawnT -= dt;
-    if (this.spawnT <= 0 && this.mons.length < 7) {
-      this.spawnT = 1.2;
-      const a = Math.random() * Math.PI * 2, r = 34 + Math.random() * 30;
-      const x = this.pos.x + Math.cos(a) * r, z = this.pos.z + Math.sin(a) * r;
-      const h = w.hf.height(x, z);
-      if (h > 1.3 && w.hf.slope(x, z) < 0.6 && !w.areaAt(x, z) && Math.abs(x) < 290 && Math.abs(z) < 290) {
-        const tab = encounterTable(x, z, night);
+    if (this.spawnT <= 0 && this.mons.length < maxMons) {
+      this.spawnT = this.inField ? 1.2 : 2.0;
+      const sp = env.spawnPoint(this.pos);
+      if (sp) {
+        const tab = env.encounter(sp.x, sp.z, night);
         const key = tab.list[Math.floor(Math.random() * tab.list.length)];
-        const m = new Monster(w.lib, MONSTERS[key]);
+        const m = new Monster(this.world.lib, MONSTERS[key]);
         m.key = key;
         m.lv = tab.lv;
-        m.root.position.set(x, h, z);
-        m.home = m.root.position.clone();
+        m.root.position.set(sp.x, sp.y, sp.z);
         m.heading = Math.random() * Math.PI * 2;
         m.state = 'wander';
         m.wait = Math.random() * 2;
@@ -297,18 +359,19 @@ export class Field {
         this.mons.push(m);
       }
     }
+    const range = this.inField ? 95 : 60;
     for (let i = this.mons.length - 1; i >= 0; i--) {
       const m = this.mons[i];
       const p = m.root.position;
       const toP = new THREE.Vector3().subVectors(this.pos, p);
       toP.y = 0;
       const dist = toP.length();
-      if (dist > 95 || (m.leaving && m.opacity <= 0.01)) { this.removeMon(i); continue; }
+      if (dist > range || (m.leaving && m.opacity <= 0.01)) { this.removeMon(i); continue; }
       if (m.fadeIn < 1 && !m.leaving) { m.fadeIn = Math.min(1, m.fadeIn + dt * 1.5); m.setOpacity(m.fadeIn); }
       if (m.leaving) m.setOpacity(Math.max(0, m.opacity - dt * 1.5));
       let sp = 0;
       const fast = m.kind === 'Bat' ? 5.2 : m.kind === 'Golem' ? 2.6 : m.kind === 'Ghost' ? 3.8 : 4.0;
-      if (!inSafe && this.safeT <= 0 && dist < 15 && !m.leaving) {
+      if (!inSafe && this.safeT <= 0 && dist < (this.inField ? 15 : 11) && !m.leaving) {
         m.state = 'chase';
         sp = fast;
         m.heading += angDiff(m.heading, Math.atan2(toP.x, toP.z)) * Math.min(1, dt * 6);
@@ -325,14 +388,13 @@ export class Field {
       }
       if (sp > 0) {
         const nx = p.x + Math.sin(m.heading) * sp * dt, nz = p.z + Math.cos(m.heading) * sp * dt;
-        const h = w.hf.height(nx, nz);
-        if (h > 1.0 && w.hf.slope(nx, nz) < 0.8 && !w.areaAt(nx, nz)) {
-          const np = new THREE.Vector3(nx, h, nz);
-          w.colliders.resolve(np, 0.5);
+        if (env.monsterOK(nx, nz)) {
+          const np = new THREE.Vector3(nx, 0, nz);
+          env.colliders.resolve(np, 0.5);
           p.x = np.x; p.z = np.z;
         } else m.heading += Math.PI * 0.7;
       }
-      p.y += (w.hf.height(p.x, p.z) - p.y) * Math.min(1, dt * 10);
+      p.y += (env.height(p.x, p.z) - p.y) * Math.min(1, dt * 10);
       m.root.rotation.y += angDiff(m.root.rotation.y, m.heading) * Math.min(1, dt * 8);
       m.speed = sp;
       if (dist < 70) m.update(dt);

@@ -7,6 +7,9 @@ import { Vegetation } from './vegetation.js';
 import { ModelLibrary } from '../actors/models.js';
 import { enhanceSurface } from './surfaces.js';
 import { Ambience } from './ambience.js';
+import { Colliders } from './colliders.js';
+import { Interiors } from './interiors.js';
+import { encounterTable } from '../game/data.js';
 
 export const AREAS = {
   castle: { name: 'アルセリア城', x: -40, z: 60, test: (x, z) => Math.abs(x + 40) < 33 && Math.abs(z - 60) < 34, music: 'castle' },
@@ -14,57 +17,10 @@ export const AREAS = {
   tower: { name: 'まおうの塔', x: 70, z: -215, test: (x, z) => Math.hypot(x - 70, z + 215) < 34, music: null },
 };
 
-/** 当たり判定（回転した箱と円）。空間ハッシュで近傍だけ調べる */
-class Colliders {
-  constructor() { this.cell = 16; this.map = new Map(); }
-  key(i, j) { return i * 73856093 ^ j * 19349663; }
-  add(c) {
-    const r = c.r ?? Math.hypot(c.hw, c.hd);
-    const i0 = Math.floor((c.x - r) / this.cell), i1 = Math.floor((c.x + r) / this.cell);
-    const j0 = Math.floor((c.z - r) / this.cell), j1 = Math.floor((c.z + r) / this.cell);
-    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
-      const k = this.key(i, j);
-      if (!this.map.has(k)) this.map.set(k, []);
-      this.map.get(k).push(c);
-    }
-  }
-  near(x, z) { return this.map.get(this.key(Math.floor(x / this.cell), Math.floor(z / this.cell))) || []; }
-  /** 半径 rad の円を押し出す。押し出したら true */
-  resolve(p, rad) {
-    let hit = false;
-    for (const c of this.near(p.x, p.z)) {
-      if (c.disabled) continue;
-      if (c.r != null) {
-        const dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz), m = c.r + rad;
-        if (d < m && d > 1e-5) { p.x = c.x + (dx / d) * m; p.z = c.z + (dz / d) * m; hit = true; }
-        continue;
-      }
-      const cs = Math.cos(c.rot), sn = Math.sin(c.rot);
-      const dx = p.x - c.x, dz = p.z - c.z;
-      const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs;
-      const qx = Math.max(-c.hw, Math.min(c.hw, lx)), qz = Math.max(-c.hd, Math.min(c.hd, lz));
-      let ex = lx - qx, ez = lz - qz;
-      let d = Math.hypot(ex, ez);
-      if (d >= rad) continue;
-      let nlx, nlz;
-      if (d < 1e-5) {
-        // 中に入り込んだ：一番近い面へ
-        const px = c.hw - Math.abs(lx), pz = c.hd - Math.abs(lz);
-        if (px < pz) { nlx = Math.sign(lx) * (c.hw + rad); nlz = lz; } else { nlx = lx; nlz = Math.sign(lz) * (c.hd + rad); }
-      } else {
-        nlx = qx + (ex / d) * rad; nlz = qz + (ez / d) * rad;
-      }
-      p.x = c.x + nlx * cs + nlz * sn;
-      p.z = c.z - nlx * sn + nlz * cs;
-      hit = true;
-    }
-    return hit;
-  }
-}
-
 export class World {
-  constructor(scene, renderer, sky, q, camera) {
+  constructor(scene, renderer, sky, q, camera, fx) {
     this.scene = scene;
+    this.fx = fx;
     this.camera = camera;
     this.renderer = renderer;
     this.sky = sky;
@@ -79,11 +35,16 @@ export class World {
     const loader = new GLTFLoader(manager);
     const files = { world: 'assets/world.glb', props: 'assets/props.glb', chars: 'assets/characters.glb' };
     const prog = {};
-    const report = () => { const v = Object.values(prog); onProgress(v.reduce((a, b) => a + b, 0) / 4); };
+    const report = () => { const v = Object.values(prog); onProgress(v.reduce((a, b) => a + b, 0) / 5); };
     const get = (key, url) => new Promise((res, rej) => loader.load(url, (g) => { prog[key] = 1; report(); res(g); },
       (e) => { if (e.total) { prog[key] = e.loaded / e.total; report(); } }, rej));
     const json = fetch('assets/world.json').then((r) => r.json()).then((j) => { prog.json = 1; report(); return j; });
-    const [wg, pg, cg, data] = await Promise.all([get('w', files.world), get('p', files.props), get('c', files.chars), json]);
+    const [wg, pg, cg, ig, data] = await Promise.all([get('w', files.world), get('p', files.props), get('c', files.chars), get('i', 'assets/interiors.glb'), json]);
+    // Blender で同名マテリアルが重複すると「.001」などが付くので取り除く
+    for (const g of [wg, pg, cg, ig]) g.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.name = m.name.replace(/\.\d+$/, '');
+    });
     this.data = data;
     this.markers = data.markers;
 
@@ -130,7 +91,40 @@ export class World {
 
     this.lib = new ModelLibrary(cg);
     this.amb = new Ambience(this.scene, this, this.q);
+    ig.scene.traverse((o) => { if (o.isMesh) enhanceSurface(o.material, terrain.heightTex, hf.uvParams, true); });
+    this.interiors = new Interiors(data.interiors, ig, this.scene, this.fx);
+    this.seal = wg.scene.getObjectByName('TowerSeal');
+    this.fieldEnv = this.makeFieldEnv();
+    this.fieldGroups = [terrain.mesh, this.water, this.grass, this.veg.group, wg.scene, this.sky.sky];
     return this;
+  }
+
+  /** フィールドの env（ダンジョンの Floor と同じインターフェース） */
+  makeFieldEnv() {
+    const w = this, hf = this.hf;
+    return {
+      kind: 'field', id: 'field', name: 'フィールド',
+      colliders: this.colliders,
+      height: (x, z) => hf.height(x, z),
+      walkable: (x, z, y) => w.walkable(x, z, y),
+      areaAt: (x, z) => w.areaAt(x, z),
+      trigger: () => null,
+      encounter: (x, z, night) => encounterTable(x, z, night),
+      spawnPoint: (p) => {
+        const a = Math.random() * Math.PI * 2, r = 34 + Math.random() * 30;
+        const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+        const h = hf.height(x, z);
+        if (h > 1.3 && hf.slope(x, z) < 0.6 && !w.areaAt(x, z) && Math.abs(x) < 290 && Math.abs(z) < 290) return { x, y: h, z };
+        return null;
+      },
+      monsterOK: (x, z) => hf.height(x, z) > 1.0 && hf.slope(x, z) < 0.8 && !w.areaAt(x, z),
+    };
+  }
+
+  /** フィールドの描画物をまとめて表示・非表示（ダンジョンに入ったとき） */
+  setFieldVisible(v) {
+    for (const g of this.fieldGroups) g.visible = v;
+    this.amb.setVisible(v);
   }
 
   marker(name) {
@@ -153,6 +147,11 @@ export class World {
   }
 
   update(dt, t, camPos, player) {
+    if (this.interiors.current) {
+      this.shared.uTime.value = t;
+      this.interiors.update(dt, t, player, camPos);
+      return;
+    }
     this.shared.uTime.value = t;
     this.shared.uDay.value = this.sky.day;
     this.water.update(dt, this.sky);

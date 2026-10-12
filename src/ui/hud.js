@@ -66,6 +66,22 @@ export class HUD {
     this.world = world;
   }
 
+  /** ダンジョンでは配置図から描いたマップに切り替える（null でフィールドに戻す） */
+  setMapEnv(floor) {
+    if (!floor) { this.mapEnv = null; return; }
+    const px = 8;
+    const c = document.createElement('canvas');
+    c.width = floor.W * px; c.height = floor.H * px;
+    const g = c.getContext('2d');
+    const col = { '#': floor.style === 'cave' ? '#2a2420' : '#241c2c', W: '#1d4a6a', P: '#6a6070', T: '#e08a30', S: '#fff0b0', U: '#9fd0ff', D: '#9fd0ff', C: '#e8c040', B: '#c040ff', O: '#ffe070' };
+    for (let j = 0; j < floor.H; j++) for (let i = 0; i < floor.W; i++) {
+      const ch = floor.grid[j][i];
+      g.fillStyle = col[ch] || (floor.style === 'cave' ? '#7a6a58' : '#8a8090');
+      g.fillRect(i * px, j * px, px, px);
+    }
+    this.mapEnv = { img: c, ox: floor.ox, oz: floor.oz, scale: floor.cell / px, floor };
+  }
+
   update() {
     const s = this.g.state;
     if (!s) return;
@@ -90,8 +106,10 @@ export class HUD {
   tick(field, sky) {
     if (!this.base || !this.visible) return;
     const g = this.ctx, hf = this.world.hf;
-    const px = (field.pos.x + hf.half) / hf.step, pz = (field.pos.z + hf.half) / hf.step;
-    const zoom = 2.4;
+    const me = this.mapEnv;
+    const toMap = me ? (x, z) => [(x - me.ox) / me.scale, (z - me.oz) / me.scale] : (x, z) => [(x + hf.half) / hf.step, (z + hf.half) / hf.step];
+    const [px, pz] = toMap(field.pos.x, field.pos.z);
+    const zoom = me ? 1.6 : 2.4;
     g.save();
     g.fillStyle = '#123';
     g.fillRect(0, 0, 256, 256);
@@ -100,17 +118,20 @@ export class HUD {
     g.scale(zoom, zoom);
     g.translate(-px, -pz);
     g.imageSmoothingEnabled = true;
-    g.drawImage(this.base, 0, 0);
+    g.imageSmoothingEnabled = !me;
+    g.drawImage(me ? me.img : this.base, 0, 0);
     // モンスター
     g.fillStyle = '#ff4a3a';
     for (const m of field.mons) {
-      const mx = (m.root.position.x + hf.half) / hf.step, mz = (m.root.position.z + hf.half) / hf.step;
-      g.beginPath(); g.arc(mx, mz, 1.3, 0, Math.PI * 2); g.fill();
+      const [mx, mz] = toMap(m.root.position.x, m.root.position.z);
+      g.beginPath(); g.arc(mx, mz, me ? 2.2 : 1.3, 0, Math.PI * 2); g.fill();
     }
-    g.fillStyle = '#ffffff';
-    for (const n of field.npcs) {
-      const mx = (n.pos.x + hf.half) / hf.step, mz = (n.pos.z + hf.half) / hf.step;
-      g.beginPath(); g.arc(mx, mz, 0.8, 0, Math.PI * 2); g.fill();
+    if (!me) {
+      g.fillStyle = '#ffffff';
+      for (const n of field.npcs) {
+        const [mx, mz] = toMap(n.pos.x, n.pos.z);
+        g.beginPath(); g.arc(mx, mz, 0.8, 0, Math.PI * 2); g.fill();
+      }
     }
     g.restore();
     // プレイヤー
@@ -131,6 +152,6 @@ export class HUD {
     const h = sky.hours;
     const hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
     const icon = sky.night > 0.5 ? '☾' : '☀';
-    this.clock.textContent = `${icon} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    this.clock.textContent = me ? me.floor.name : `${icon} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   }
 }

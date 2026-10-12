@@ -35,10 +35,11 @@ export class Battle {
     const heroPos = f.pos.clone();
     let dir;
     if (this.opts.boss) {
-      const bp = f.boss.root.position;
+      this.bossObj = this.opts.boss === 'dragon' ? f.boss : f.guardian;
+      const bp = this.bossObj.root.position;
       dir = V(bp.x - heroPos.x, 0, bp.z - heroPos.z).normalize();
-      heroPos.copy(bp).addScaledVector(dir, -12.5);
-      heroPos.y = w.hf.height(heroPos.x, heroPos.z);
+      heroPos.copy(bp).addScaledVector(dir, this.opts.boss === 'dragon' ? -12.5 : -7.5);
+      heroPos.y = f.env.height(heroPos.x, heroPos.z);
     } else if (this.opts.symbol) {
       const sp = this.opts.symbol.root.position;
       dir = V(sp.x - heroPos.x, 0, sp.z - heroPos.z);
@@ -57,8 +58,8 @@ export class Battle {
 
     // 敵の編成
     if (this.opts.boss) {
-      const m = f.boss;
-      this.enemies.push(this.makeEnemy('dragon', m, m.root.position.clone()));
+      const m = this.bossObj;
+      this.enemies.push(this.makeEnemy(this.opts.boss, m, m.root.position.clone()));
     } else {
       const sym = this.opts.symbol;
       const tab = encounterTable(heroPos.x, heroPos.z, this.g.sky.night > 0.5);
@@ -67,9 +68,9 @@ export class Battle {
       for (let i = 0; i < extra; i++) keys.push(Math.random() < 0.6 ? sym.key : tab.list[rint(0, tab.list.length - 1)]);
       const n = keys.length;
       keys.forEach((k, i) => {
-        const lat = (i - (n - 1) / 2) * 2.9;
-        const p = heroPos.clone().addScaledVector(dir, 6.2 + Math.abs(lat) * 0.25).addScaledVector(this.right, lat);
-        p.y = w.hf.height(p.x, p.z);
+        const lat = (i - (n - 1) / 2) * (f.inField ? 2.9 : 2.1);
+        const p = heroPos.clone().addScaledVector(dir, (f.inField ? 6.2 : 5.2) + Math.abs(lat) * 0.25).addScaledVector(this.right, lat);
+        p.y = f.env.height(p.x, p.z);
         const m = new Monster(w.lib, MONSTERS[k]);
         m.root.position.copy(p);
         m.root.rotation.y = Math.atan2(-dir.x, -dir.z);
@@ -86,7 +87,7 @@ export class Battle {
       if (count[e.key] > 1) { idx[e.key] = (idx[e.key] || 0) + 1; e.name = e.def.name + ' ' + 'ABCD'[idx[e.key] - 1]; }
     }
     f.setVisible(false);
-    if (this.opts.boss) f.boss.root.visible = true;
+    if (this.opts.boss) this.bossObj.root.visible = true;
     this.hero.root.visible = true;
     this.center = this.enemies.reduce((a, e) => a.add(e.home), V()).multiplyScalar(1 / this.enemies.length);
   }
@@ -131,7 +132,7 @@ export class Battle {
     const k = Math.min(1, dt * s.speed);
     this.camPos.lerp(s.pos, k);
     this.camLook.lerp(s.look, k);
-    const gh = this.g.world.hf.height(this.camPos.x, this.camPos.z) + 0.5;
+    const gh = this.f.env.height(this.camPos.x, this.camPos.z) + 0.5;
     if (this.camPos.y < gh) this.camPos.y = gh;
     cam.position.copy(this.camPos);
     if (this.shake > 0) {
@@ -368,7 +369,7 @@ export class Battle {
     const start = this.hero.root.position.clone();
     const reach = target.def.boss ? 4.2 : 1.5 + (target.def.scale || 1) * 0.4;
     const to = target.home.clone().addScaledVector(this.dir, -reach);
-    to.y = this.g.world.hf.height(to.x, to.z);
+    to.y = this.f.env.height(to.x, to.z);
     this.hero.speed = 6;
     await this.tween(this.hero.root.position, start, to, 380, (t) => t);
     this.hero.speed = 0;
@@ -528,7 +529,7 @@ export class Battle {
     const def = e.def;
     let mode = 'attack';
     if (def.skill && Math.random() < (def.boss ? 0.45 : 0.3)) mode = def.skill;
-    if (def.boss && mode === 'attack' && Math.random() < 0.4) mode = 'tail';
+    if (e.key === 'dragon' && mode === 'attack' && Math.random() < 0.4) mode = 'tail';
     const heroP = this.hero.root.position.clone().add(V(0, 1.1, 0));
 
     const hitHero = async (dmg, label) => {
@@ -548,7 +549,7 @@ export class Battle {
     const lunge = async (fn) => {
       const from = e.home.clone();
       const to = e.home.clone().lerp(this.heroHome, def.boss ? 0.25 : 0.62);
-      to.y = this.g.world.hf.height(to.x, to.z);
+      to.y = this.f.env.height(to.x, to.z);
       e.m.speed = 4;
       await this.tween(e.m.root.position, from, to, 260);
       e.m.lunge = 1;
@@ -651,7 +652,7 @@ export class Battle {
     const gold = this.enemies.reduce((a, e) => a + e.def.gold, 0);
     this.setShot('victory');
     this.hero.play('Victory', { hold: true });
-    if (this.opts.boss) {
+    if (this.opts.boss === 'dragon') {
       audio.play('victory');
       await this.log.add(`${this.enemies[0].name}は ひかりの なかへ きえていった……。`, 1500);
       return;
@@ -690,10 +691,10 @@ export class Battle {
     this.log.remove();
     if (this.enemyWin) this.enemyWin.remove();
     for (const e of this.enemies) {
-      if (e.def.boss) continue;
+      if (e.m === this.f.boss || e.m === this.f.guardian) continue;
       this.g.scene.remove(e.m.root);
     }
-    if (this.opts.boss && result === 'win') this.f.boss.root.visible = false;
+    if (this.opts.boss && result === 'win') this.bossObj.root.visible = false;
     this.hero.stopOneShot();
     this.hero.setWeapon(false);
     this.f.setVisible(true);

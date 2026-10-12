@@ -73,7 +73,9 @@ LAKE = (-150.0, -30.0)
 
 ROAD_A = [(-40, 92), (-10, 104), (30, 114), (70, 114), (100, 110)]          # 城 → 村
 ROAD_B = [(-40, 92), (2, 82), (34, 36), (52, -30), (62, -100), (68, -160), (70, -198)]  # 城 → 塔
-ROADS = [ROAD_A, ROAD_B]
+ROAD_C = [(34, 36), (0, 0), (-40, -40), (-85, -75), (-120, -100), (-150, -114)]  # 分かれ道 → ほこらの洞窟
+ROADS = [ROAD_A, ROAD_B, ROAD_C]
+CAVE = (-150.0, -124.0)   # 洞窟の入口
 
 # 村の家（村の中心からの相対位置）: 名前, dx, dz, 幅, 奥行, 壁の高さ, 屋根, 宿屋, 店
 VILLAGE_HOUSES = [
@@ -151,6 +153,18 @@ def ridged(x, z, o=5):
 
 
 def height(x, z):
+    h = height_raw(x, z)
+    rd = road_dist(x, z)
+    for (cx, cz, rr, hh) in PADS:
+        d = math.hypot(x - cx, z - cz)
+        h = lerp(h, hh, smoothstep(rr, rr * 0.62, d))
+    # 道は少し窪ませてなだらかに
+    if h > 0.5:
+        h -= 0.25 * smoothstep(5.0, 1.5, rd)
+    return h
+
+
+def height_raw(x, z):
     r = math.hypot(x, z) / HALF + fbm(x / 90, z / 90, 3, 5.0) * 0.18
     island = smoothstep(0.97, 0.80, r)
     hills = 3.0 + (fbm(x / 110, z / 110, 5) * 0.5 + 0.5) * 12.0
@@ -159,6 +173,8 @@ def height(x, z):
     corridor = 1.0 - 0.95 * math.exp(-(rd * rd) / (2 * 30 * 30)) * smoothstep(-80, -120, z)
     ridge = ridged(x / 65, z / 65, 5)
     h = hills + mtn * 22.0 + mtn * (ridge ** 2) * 80.0 * corridor
+    # 洞窟の入口がある岩山
+    h += 17.0 * math.exp(-((x - CAVE[0]) ** 2 + (z - CAVE[1] + 18) ** 2) / (2 * 15 ** 2))
     # 西の湖
     ld = math.hypot(x - LAKE[0], z - LAKE[1]) / 58.0 + fbm(x / 40, z / 40, 3, 9.0) * 0.15
     h = lerp(h, -5.0, smoothstep(1.0, 0.6, ld))
@@ -167,13 +183,11 @@ def height(x, z):
     if -3.0 < h < 3.5:
         u = (h + 3.0) / 6.5
         h = -3.0 + 6.5 * (u + 0.12 * math.sin(2 * math.pi * u))
-    for (cx, cz, rr, hh) in PADS:
-        d = math.hypot(x - cx, z - cz)
-        h = lerp(h, hh, smoothstep(rr, rr * 0.62, d))
-    # 道は少し窪ませてなだらかに
-    if h > 0.5:
-        h -= 0.25 * smoothstep(5.0, 1.5, rd)
     return h
+
+
+# 洞窟の前は平らな広場にする（自然の高さに合わせる）
+PADS.append((CAVE[0], CAVE[1] + 9, 13, height_raw(CAVE[0], CAVE[1] + 9)))
 
 
 print("terrain heights...")
@@ -637,9 +651,16 @@ def build_tower():
     mb.build("DarkTower", C_BLDG, loc=B(tx, tz, y))
     collider("Tower", tx, tz, 19, 19, top=45)
     marker("Boss", tx, tz + 13.5, rot=0.0)
+    # 扉をふさぐ闇の封印（ひかりのオーブで消える）
+    mb = MB()
+    mb.add('cyl', mat("SealGlow", (0.5, 0.1, 0.8), 0.2, emit=(0.6, 0.15, 1.0), emit_strength=3.0, double=True),
+           loc=(0, 0, 0), rot=(math.pi / 2, 0, 0), r1=2.3, r2=2.3, depth=0.05, seg=32, scale=(1, 1.55, 1))
+    mb.build("TowerSeal", C_BLDG, loc=B(tx, tz + 9.85, y + 4.4))
+    marker("TowerDoor", tx, tz + 10.6, rot=0.0)
+    marker("TowerExit", tx, tz + 15.5, rot=0.0)
 
     # 道しるべ
-    for (sx, sz, rot, nm) in ((-28, 100, 0.4, "Sign1"), (30, 30, 2.6, "Sign2"), (95, 106, -1.2, "Sign3")):
+    for (sx, sz, rot, nm) in ((-28, 100, 0.4, "Sign1"), (30, 30, 2.6, "Sign2"), (95, 106, -1.2, "Sign3"), (26, 26, 0.9, "Sign4")):
         mb = MB()
         mb.add('cube', M_WOOD_D, loc=(0, 0, 0.9), scale=(0.18, 0.18, 1.8))
         mb.add('cube', M_WOOD, loc=(0, 0, 1.6), scale=(1.3, 0.12, 0.5))
@@ -648,9 +669,43 @@ def build_tower():
         collider(nm, sx, sz, 1.0, 1.0, top=2)
 
 
+def build_cave_entrance():
+    """岩山に開いた洞窟の入口（南向き）"""
+    cx, cz = CAVE
+    y = H(cx, cz + 5)
+    rock = mat("CaveRock", (0.42, 0.38, 0.34), 0.92)
+    rock2 = mat("CaveRockDark", (0.27, 0.24, 0.22), 0.95)
+    mb = MB()
+    rng = random.Random(77)
+    # アーチ状に積んだ大岩
+    for k in range(13):
+        a = math.pi * k / 12
+        px, pz = math.cos(a) * 4.3, -math.sin(a) * 0.4
+        mb.add('ico', rock if k % 2 else rock2, loc=(px, pz + 0.6, 0.6 + math.sin(a) * 4.6), r=rng.uniform(1.4, 2.0), sub=2,
+               jitter=0.35, smooth=False, seed=k)
+    for k in range(10):
+        mb.add('ico', rock2, loc=(rng.uniform(-7, 7), rng.uniform(2.5, 7), rng.uniform(0, 6)), r=rng.uniform(2.0, 3.2), sub=2,
+               jitter=0.4, smooth=False, seed=40 + k)
+    # 暗い奥
+    mb.add('sphere', mat("Abyss", (0.0, 0.0, 0.0), 1.0), loc=(0, 2.4, 2.2), r=1.0, seg=24, rings=12, scale=(3.4, 2.0, 3.2))
+    # 入口のたいまつ
+    for sx in (-1, 1):
+        mb.add('cyl', mat("WoodDark", (0.25, 0.15, 0.08), 0.8), loc=(sx * 5.6, -1.2, 1.1), r1=0.1, r2=0.08, depth=2.2, seg=8)
+        mb.add('cyl', mat("Iron", (0.12, 0.12, 0.13), 0.5, 0.8), loc=(sx * 5.6, -1.2, 2.3), r1=0.18, r2=0.3, depth=0.3, seg=8)
+        marker(f"Light_CaveTorch{sx}", cx + sx * 5.6, cz + 1.2, y=y + 2.5)
+        marker(f"Torch_Cave{sx}", cx + sx * 5.6, cz + 1.2, y=y + 2.5)
+    mb.build("CaveEntrance", C_BLDG, loc=B(cx, cz, y))
+    for sx in (-1, 1):
+        collider(f"CaveRockL{sx}", cx + sx * 5.2, cz - 1.0, 3.2, 6.0, top=8)
+    collider("CaveBack", cx, cz - 4.5, 14, 3.0, top=8)
+    marker("CaveEntrance", cx, cz + 1.2, rot=0.0)
+    marker("CaveExit", cx, cz + 6.0, rot=0.0)
+
+
 build_castle()
 build_village()
 build_tower()
+build_cave_entrance()
 for i, (lx, lz) in enumerate([(-47, 97), (-33, 97), (12, 112), (45, 118), (88, 116)]):
     lamp(f"RoadLamp{i}", lx, lz)
 

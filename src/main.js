@@ -10,10 +10,11 @@ import { Audio } from './audio.js';
 import { FX } from './fx.js';
 import { Field } from './game/field.js';
 import { Battle } from './game/battle.js';
-import { TALK, expForLevel } from './game/data.js';
+import { TALK, expForLevel, CHESTS, ITEMS, EQUIP } from './game/data.js';
 import { newState, derived, save, load, hasSave, gainExp } from './game/state.js';
 import { fieldMenu, inn, shop } from './game/menu.js';
 import { AREAS } from './world/world.js';
+import { CUT } from './world/surfaces.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -55,7 +56,7 @@ class Game {
     this.uiRoot.appendChild(ld);
     const bar = ld.querySelector('i');
     this.sky = new SkySystem(this.scene, this.renderer.r, this.q);
-    this.world = new World(this.scene, this.renderer.r, this.sky, this.q, this.camera);
+    this.world = new World(this.scene, this.renderer.r, this.sky, this.q, this.camera, this.fx);
     await this.world.load((p) => { bar.style.width = `${Math.round(p * 100)}%`; });
     ld.querySelector('.s').textContent = 'シェーダーを じゅんびしています…';
     this.resize();
@@ -92,7 +93,9 @@ class Game {
           this.startBattle(m);
         }, 800);
       }
-      if (dev.has('boss')) setTimeout(() => this.startBattle(null, true), 800);
+      if (dev.has('orb')) { this.state.flags.orb = this.state.flags.guardian = true; }
+      if (dev.has('area')) setTimeout(() => this.enterInterior(dev.get('area'), dev.get('at') || 'S', true), 300);
+      if (dev.has('boss')) setTimeout(async () => { await this.enterInterior('tower3', 'D', true); this.startBattle(null, 'dragon'); }, 300);
       return;
     }
     this.title();
@@ -132,7 +135,12 @@ class Game {
     // 時間帯の色調（夜は青く・彩度を落とす、夕方は暖色）
     const gu = this.renderer.grade.uniforms, sk = this.sky;
     gu.uSaturation.value = 1.12 - sk.night * 0.45 + sk.dusk * 0.05;
+    gu.uVignette.value = 0.32;
     gu.uTint.value.set(1 - sk.night * 0.22 + sk.dusk * 0.06, 1 - sk.night * 0.1, 1 + sk.night * 0.12 - sk.dusk * 0.08);
+    if (this.world.interiors.current) this.applyInteriorLighting();
+    CUT.uCutOn.value = this.world.interiors.current ? 1 : 0;
+    CUT.uCutCam.value.copy(this.camera.position);
+    CUT.uCutTarget.value.copy(f.pos).y += 1.0;
     this.world.update(dt, this.t, this.camera.position, f.pos);
     this.fx.update(dt);
     this.ambient(dt);
@@ -142,8 +150,13 @@ class Game {
 
   /** 夜のホタル・塔のまわりの魔力など */
   ambient(dt) {
-    if (this.mode !== 'field') return;
+    if (this.mode !== 'field' || !this.field.inField) return;
     const p = this.field.pos;
+    // 洞窟の入口のたいまつ
+    for (const k of ['Torch_Cave-1', 'Torch_Cave1']) {
+      const m = this.world.marker(k);
+      if (m && m.pos.distanceToSquared(p) < 60 * 60) this.fx.emit({ pos: m.pos, count: 1, color: [0xffcc55, 0xff7722], speed: 0.25, up: 1.5, life: 0.5, size: 0.4, grow: -0.6, spread: 0.25, flat: true });
+    }
     this._amb = (this._amb || 0) - dt;
     if (this._amb > 0) return;
     this._amb = 0.12;
@@ -234,14 +247,20 @@ class Game {
   continueGame() {
     const s = load();
     this.state = { ...newState(s.name), ...s };
-    if (s.pos) this.field.place(new THREE.Vector3(s.pos.x, 0, s.pos.z), s.pos.rot);
     if (s.time != null) { this.sky.time = s.time; this.sky.envTimer = 999; }
+    if (s.area && this.world.interiors.floors[s.area]) {
+      this.enterField();
+      this.enterInterior(s.area, s.pos, true);
+      return;
+    }
+    if (s.pos) this.field.place(new THREE.Vector3(s.pos.x, 0, s.pos.z), s.pos.rot);
     this.enterField();
   }
 
   enterField() {
     this.mode = 'field';
     this.input.allowTouch(true);
+    if (this.world.seal) this.world.seal.visible = !this.state.flags.sealBroken;
     this.hud.setVisible(true);
     this.hud.update();
     this.field.area = undefined;
@@ -252,10 +271,12 @@ class Game {
     const s = this.state;
     s.pos = { x: this.field.pos.x, z: this.field.pos.z, rot: this.field.facing };
     s.time = this.sky.time;
+    s.area = this.field.inField ? null : this.field.env.id;
     return s;
   }
 
   fieldMusic() {
+    if (!this.field.inField) return this.field.env.style === 'cave' ? 'cave' : 'tower';
     const a = this.field.area;
     if (a && AREAS[a].music) return AREAS[a].music;
     return this.sky.night > 0.55 ? 'field_night' : 'field';
@@ -274,6 +295,9 @@ class Game {
     if (!it) return;
     this.audio.sfx('confirm');
     if (it.kind === 'boss') { await this.bossEvent(); return; }
+    if (it.kind === 'chest') { await this.openChest(it.obj); return; }
+    if (it.kind === 'orb') { await this.orbEvent(); return; }
+    if (it.kind === 'guardian') { await this.guardianEvent(); return; }
     if (it.kind === 'sign') { await this.ui.say(TALK[it.id](this)); return; }
     const n = it.obj;
     n.talking = true;
@@ -302,7 +326,7 @@ class Game {
   }
 
   // ------------------------------------------------------------ 戦闘
-  async startBattle(symbol, boss = false) {
+  async startBattle(symbol, boss = null) {
     if (this.mode !== 'field') return;
     this.mode = 'battle-trans';
     this.audio.sfx('encounter');
@@ -323,6 +347,7 @@ class Game {
   async afterBattle(result, boss) {
     if (result === 'lose') {
       await this.ui.fadeTo(1, 1200);
+      if (!this.field.inField) this.leaveInterior();
       const s = this.state, d = derived(s);
       s.hp = d.maxHp; s.mp = d.maxMp;
       s.gold = Math.floor(s.gold / 2);
@@ -341,7 +366,16 @@ class Game {
       ]);
       return;
     }
-    if (result === 'win' && boss) { await this.ending(); return; }
+    if (result === 'win' && boss === 'dragon') { await this.ending(); return; }
+    if (result === 'win' && boss === 'guardian') {
+      this.state.flags.guardian = true;
+      this.mode = 'field';
+      this.field.snapCamera();
+      this.updateMusic(true);
+      this.hud.update();
+      await this.ui.say(['がんせきの番人は くずれおちた……。', 'おくの さいだんで なにかが ひかっている。']);
+      return;
+    }
     this.mode = 'field';
     if (result === 'flee') this.field.afterFlee();
     this.field.snapCamera();
@@ -361,16 +395,200 @@ class Game {
     ]);
     this.field.boss.lunge = 0;
     this.mode = 'field';
-    await this.startBattle(null, true);
+    await this.startBattle(null, 'dragon');
+  }
+
+  // ------------------------------------------------------------ ダンジョン
+  /** フィールドの出入口（洞窟・塔の扉）に近づいた */
+  async onDoor(id) {
+    if (this.mode !== 'field' || this.ui.busy) return;
+    if (id === 'cave') { await this.enterInterior('cave1', 'S'); return; }
+    if (id === 'tower') {
+      const fl = this.state.flags;
+      if (!fl.orb) {
+        this.mode = 'cutscene';
+        this.audio.sfx('door');
+        await this.ui.say(['やみの ふういんが とびらを とざしている……。', 'ふしぎな ちからで おしもどされた！']);
+        const ex = this.world.marker('TowerExit');
+        this.field.place(ex.pos, ex.rot);
+        this.mode = 'field';
+        return;
+      }
+      if (!fl.sealBroken) {
+        this.mode = 'cutscene';
+        const sp = this.world.seal.getWorldPosition(new THREE.Vector3());
+        await this.ui.say(`${this.state.name}は ひかりのオーブを かかげた！`);
+        this.audio.sfx('light');
+        for (let k = 0; k < 4; k++) {
+          this.fx.emit({ pos: sp, count: 80, color: [0xfff0a0, 0xffffff, 0xc080ff], speed: 6, life: 1.2, size: 0.4, spread: 2 });
+          this.fx.flashLight(sp, 0xfff0c0, 80, 0.5);
+          await sleep(250);
+        }
+        this.ui.flashScreen('#fff', 900, 1);
+        this.world.seal.visible = false;
+        fl.sealBroken = true;
+        await this.ui.say('やみの ふういんが きえさった！');
+        this.mode = 'field';
+      }
+      await this.enterInterior('tower1', 'S');
+    }
+  }
+
+  /** ダンジョン内の出口・階段 */
+  async onTrigger(c) {
+    if (this.mode !== 'field') return;
+    const id = this.field.env.id;
+    const links = {
+      'cave1:D': ['cave2', 'U'], 'cave2:U': ['cave1', 'D'],
+      'tower1:U': ['tower2', 'D'], 'tower2:D': ['tower1', 'U'],
+      'tower2:U': ['tower3', 'D'], 'tower3:D': ['tower2', 'U'],
+    };
+    if (c === 'S') { await this.exitToField(id.startsWith('cave') ? 'CaveExit' : 'TowerExit'); return; }
+    const to = links[`${id}:${c}`];
+    if (to) await this.enterInterior(to[0], to[1]);
+  }
+
+  /** ダンジョンのフロアに入る（at: 'S' | 'U' | 'D' または保存位置） */
+  async enterInterior(id, at, instant = false) {
+    const floor = this.world.interiors.floors[id];
+    if (!floor) return;
+    this.mode = 'cutscene';
+    this.field.hint.classList.add('hidden');
+    if (!instant) { this.audio.sfx(at === 'S' ? 'door' : 'step'); await this.ui.fadeTo(1, 450); }
+    this.world.setFieldVisible(false);
+    this.world.interiors.enter(id);
+    this.field.setEnv(floor);
+    // 開けた宝箱・取ったオーブ
+    const fl = this.state.flags;
+    for (const c of floor.chests) if (c.lid) c.lid.rotation.x = fl.chests && fl.chests[c.id] ? -1.9 : 0;
+    if (floor.orb) floor.orb.visible = !fl.orb;
+    let pos, rot;
+    if (typeof at === 'object' && at) { pos = new THREE.Vector3(at.x, 0, at.z); rot = at.rot || 0; floor.trigger(pos.x, pos.z); }
+    else { const a = floor.arrival(at); pos = a.pos; rot = a.rot; }
+    this.field.place(pos, rot);
+    this.field.cam.pitch = Math.max(this.field.cam.pitch, 0.98);
+    this.field.cam.dist = Math.min(this.field.cam.dist, 10);
+    this.field.snapCamera();
+    this.hud.setMapEnv(floor);
+    this.mode = 'field';
+    this.updateMusic(true);
+    if (!instant) await this.ui.fadeTo(0, 450);
+    this.ui.showBanner(floor.name);
+  }
+
+  leaveInterior() {
+    this.world.interiors.leave();
+    this.world.setFieldVisible(true);
+    this.field.setEnv(this.world.fieldEnv);
+    this.hud.setMapEnv(null);
+    this.sky.sun.castShadow = true;
+    this.scene.background = null;
+    this.field.area = undefined;
+  }
+
+  async exitToField(markerName) {
+    this.mode = 'cutscene';
+    this.audio.sfx('door');
+    await this.ui.fadeTo(1, 450);
+    this.leaveInterior();
+    const m = this.world.marker(markerName);
+    this.field.place(m.pos, m.rot);
+    this.field.cam.pitch = 0.32;
+    this.field.snapCamera();
+    this.sky.envTimer = 999;
+    this.mode = 'field';
+    this.updateMusic(true);
+    await this.ui.fadeTo(0, 450);
+  }
+
+  /** ダンジョン内の明るさ：空・太陽を消し、暗い霧とかがり火で照らす */
+  applyInteriorLighting() {
+    const cave = this.field.env.style === 'cave';
+    const sky = this.sky;
+    if (!this._black) this._black = new THREE.Color(0, 0, 0);
+    this.scene.background = this._black;
+    this.scene.fog.color.setRGB(cave ? 0.012 : 0.02, cave ? 0.011 : 0.012, cave ? 0.01 : 0.03);
+    this.scene.fog.density = cave ? 0.034 : 0.026;
+    sky.sun.intensity = 0;
+    sky.sun.castShadow = false;
+    sky.hemi.color.setRGB(cave ? 0.35 : 0.4, cave ? 0.38 : 0.3, cave ? 0.5 : 0.6);
+    sky.hemi.groundColor.setRGB(0.06, 0.05, 0.05);
+    sky.hemi.intensity = cave ? 0.75 : 0.85;
+    this.scene.environmentIntensity = 0.12;
+    this.renderer.r.toneMappingExposure = 0.85;
+    const gu = this.renderer.grade.uniforms;
+    gu.uSaturation.value = 1.05;
+    gu.uTint.value.set(cave ? 1.04 : 1.02, cave ? 1.0 : 0.96, cave ? 0.95 : 1.06);
+    gu.uVignette.value = 0.55;
+  }
+
+  async openChest(c) {
+    const fl = this.state.flags;
+    fl.chests = fl.chests || {};
+    if (fl.chests[c.id]) return;
+    this.mode = 'cutscene';
+    fl.chests[c.id] = true;
+    this.audio.sfx('door');
+    if (c.lid) {
+      const t0 = performance.now();
+      await new Promise((res) => {
+        const step = () => {
+          const k = Math.min(1, (performance.now() - t0) / 450);
+          c.lid.rotation.x = -1.9 * (1 - Math.pow(1 - k, 3));
+          if (k < 1) requestAnimationFrame(step); else res();
+        };
+        step();
+      });
+    }
+    this.fx.emit({ pos: c.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), count: 40, color: [0xffe680, 0xffffff], speed: 1.2, up: 2, life: 1.0, size: 0.22, flicker: 20 });
+    const got = CHESTS[c.id] || { item: 'herb', n: 1 };
+    const s = this.state;
+    let text;
+    if (got.gold) { s.gold += got.gold; text = `${got.gold}ゴールドを てにいれた！`; this.audio.sfx('coin'); }
+    else if (got.equip) { s.bag.push(got.equip); text = `${EQUIP[got.equip].name}を てにいれた！`; this.audio.sfx('item'); }
+    else { this.addItem(got.item, got.n); text = `${ITEMS[got.item].name}を ${got.n}こ てにいれた！`; this.audio.sfx('item'); }
+    await this.ui.say([`${s.name}は たからばこを あけた！`, text].concat(got.equip ? ['（メニューの「そうび」で そうび できます）'] : []));
+    this.hud.update();
+    this.mode = 'field';
+  }
+
+  async guardianEvent() {
+    if (this.mode !== 'field') return;
+    this.mode = 'cutscene';
+    this.audio.sfx('roar');
+    this.field.guardian.lunge = 1;
+    await this.ui.say([
+      { who: 'がんせきの番人', text: '……ひかりを もとめる ものよ。' },
+      { who: 'がんせきの番人', text: 'オーブに ふさわしき ちからか、 この いわの こぶしで ためさせてもらう！' },
+    ]);
+    this.mode = 'field';
+    await this.startBattle(null, 'guardian');
+  }
+
+  async orbEvent() {
+    const fl = this.state.flags;
+    if (!fl.guardian) { await this.guardianEvent(); return; }
+    this.mode = 'cutscene';
+    const floor = this.field.env;
+    const p = floor.orb.getWorldPosition(new THREE.Vector3());
+    this.fx.emit({ pos: p, count: 120, color: [0xfff0a0, 0xffffff, 0xffd060], speed: 3, up: 1, life: 1.6, size: 0.3, flicker: 15 });
+    this.fx.flashLight(p, 0xfff0c0, 60, 1.5);
+    floor.orb.visible = false;
+    fl.orb = true;
+    await this.audio.jingle('levelup', this.fieldMusic());
+    await this.ui.say([`${this.state.name}は ひかりのオーブを てにいれた！`, 'あたたかな ひかりが こころを みたしていく……。', 'これで まおうの塔の ふういんを とけるはずだ。']);
+    this.mode = 'field';
   }
 
   async warpToCastle() {
     this.mode = 'cutscene';
     this.audio.sfx('spell');
     await this.ui.fadeTo(1, 700);
+    if (!this.field.inField) this.leaveInterior();
     const st = this.world.marker('Start');
     this.field.place(st.pos, st.rot);
     this.field.clearMonsters();
+    this.updateMusic(true);
     await sleep(300);
     this.mode = 'field';
     this.field.area = undefined;
@@ -382,6 +600,7 @@ class Game {
     this.mode = 'cutscene';
     s.flags.cleared = true;
     await ui.fadeTo(1, 2000);
+    if (!this.field.inField) this.leaveInterior();
     this.field.clearMonsters();
     const k = this.world.marker('King');
     const p = k.pos.clone().add(new THREE.Vector3(Math.sin(k.rot) * 3.2, 0, Math.cos(k.rot) * 3.2));

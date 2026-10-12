@@ -28,6 +28,7 @@ const CH = {
   F: ['F3', 'A3', 'C4'], Bb: ['Bb2', 'D3', 'F3'], Dm: ['D3', 'F3', 'A3'], C: ['C3', 'E3', 'G3'], Gm: ['G2', 'Bb2', 'D3'],
   G: ['G2', 'B2', 'D3'], D: ['D3', 'F#3', 'A3'], Am: ['A2', 'C3', 'E3'], Em: ['E3', 'G3', 'B3'], A: ['A2', 'C#3', 'E3'],
   E: ['E2', 'G#2', 'B2'], Bm: ['B2', 'D3', 'F#3'], 'F#m': ['F#2', 'A2', 'C#3'], Cmaj: ['C3', 'E3', 'G3'],
+  Cm: ['C3', 'Eb3', 'G3'], Ab: ['Ab2', 'C3', 'Eb3'],
 };
 const up = (n, o) => n.replace(/\d/, (d) => String(parseInt(d, 10) + o));
 function bassLine(chords, pat, bar) {
@@ -72,7 +73,32 @@ const BOSS_MEL = `
   D6:2 C6:2 Bb5:2 F5:2 | E5:2 G5:2 C6:4 | C6:2 A5:2 E5:2 A5:2 | D6:6 -:2 |
   Bb5:2 A5:2 G5:2 D5:2 | C#5:2 E5:2 A5:4 | F5:2 E5:2 D5:2 F5:2 | E5:4 C#5:4`;
 
+const CAVE_CH = ['Dm', 'Dm', 'Bb', 'Bb', 'C', 'C', 'Am', 'Am'];
+const CAVE_MEL = `
+  D5:4 -:2 F5:2 | E5:6 -:2 | C5:3 D5:1 E5:2 G5:2 | A4:8 |
+  D5:2 F5:2 A5:4 | G5:4 F5:2 E5:2 | D5:6 C5:2 | D5:8`;
+const TOWER_CH = ['Cm', 'Ab', 'Bb', 'G', 'Cm', 'Ab', 'Bb', 'G'];
+const TOWER_MEL = `
+  C5:4 Eb5:2 G5:2 | F5:4 Eb5:2 D5:2 | Eb5:3 D5:1 C5:2 Bb4:2 | B4:8 |
+  C5:2 G5:2 C6:4 | Bb5:4 Ab5:2 G5:2 | F5:2 Eb5:2 D5:2 F5:2 | G5:8`;
+
 const SONGS = {
+  cave: {
+    bpm: 68, tracks: [
+      { inst: 'bell', vol: 0.1, s: CAVE_MEL },
+      { inst: 'pad', vol: 0.08, s: padLine(CAVE_CH, 8) },
+      { inst: 'bass', vol: 0.24, s: bassLine(CAVE_CH, [[0, 8, -1]]) },
+      { inst: 'bell', vol: 0.05, s: '-:5 D6:1 -:10 A5:1 -:7 F6:1 -:8 -:4 E6:1 -:12 C6:1 -:13' },
+    ],
+  },
+  tower: {
+    bpm: 92, tracks: [
+      { inst: 'brass', vol: 0.1, s: TOWER_MEL },
+      { inst: 'organ', vol: 0.07, s: padLine(TOWER_CH, 8) },
+      { inst: 'bass', vol: 0.28, s: bassLine(TOWER_CH, [[0, 2, -1], [0, 2, -1], [2, 2, -1], [0, 2, -1]]) },
+      { inst: 'drum', vol: 0.2, s: rep('k:4 -:2 k:1 k:1', 8) },
+    ],
+  },
   field: {
     bpm: 112, tracks: [
       { inst: 'lead', vol: 0.16, s: FIELD_MEL },
