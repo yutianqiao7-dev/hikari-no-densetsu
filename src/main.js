@@ -19,6 +19,19 @@ import { CUT } from './world/surfaces.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// スマホでのダブルタップ／ピンチによる拡大を止める（iOS Safari は user-scalable=no を無視するため）
+{
+  const stop = (e) => e.preventDefault();
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) document.addEventListener(ev, stop, { passive: false });
+  document.addEventListener('touchmove', (e) => { if (e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, { passive: false });
+  let lastTap = 0;
+  document.addEventListener('touchend', (e) => {
+    const now = performance.now();
+    if (now - lastTap < 350 && e.cancelable) e.preventDefault();
+    lastTap = now;
+  }, { passive: false });
+}
+
 class Game {
   constructor() {
     this.qKey = loadQualityKey();

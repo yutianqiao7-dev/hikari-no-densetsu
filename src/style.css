@@ -9,7 +9,8 @@
   --sal: env(safe-area-inset-left, 0px);
 }
 
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: none; -webkit-touch-callout: none; }
+#battle-sub { touch-action: pan-y; }
 html, body {
   margin: 0; height: 100%; overflow: hidden; background: #000; color: #fff;
   font-family: 'DotGothic16', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
