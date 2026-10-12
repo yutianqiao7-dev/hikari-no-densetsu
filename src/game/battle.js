@@ -880,14 +880,14 @@ export class Battle {
         this.g.hud.update();
       }
     }
-    await this.g.ui.waitKey();
+    await this.g.ui.waitKey(null, { indicator: this.log.el });
   }
 
   async defeat() {
     this.g.audio.play('gameover', { fade: 0.2 });
     this.g.renderer.grade.uniforms.uDesat.value = 0.8;
     await this.log.add(`${this.allies[0].name}たちは ぜんめつした……。`, 1800);
-    await this.g.ui.waitKey();
+    await this.g.ui.waitKey(null, { indicator: this.log.el });
   }
 
   cleanup(result) {

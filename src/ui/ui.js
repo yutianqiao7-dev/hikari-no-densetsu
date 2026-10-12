@@ -164,10 +164,29 @@ export class UI {
   }
 
   /** 何かキーが押されるまで待つ（ステータス画面など） */
-  waitKey(w) {
+  /** ボタンかタップで進む。w があればそのウィンドウを、なければ画面のどこをタップしても進む */
+  waitKey(w, { indicator } = {}) {
     return new Promise((resolve) => {
-      const m = { key: (k) => { if (k === 'confirm' || k === 'cancel') { this.pop(m); this.audio.sfx('cursor'); if (w) w.remove(); resolve(); } } };
+      let veil = null, mark = null;
+      const m = {
+        key: (k) => {
+          if (k !== 'confirm' && k !== 'cancel') return;
+          this.pop(m);
+          this.audio.sfx('cursor');
+          if (w) w.remove();
+          if (veil) veil.remove();
+          if (mark) mark.remove();
+          resolve();
+        },
+      };
       if (w) w.onpointerup = () => m.key('confirm');
+      else {
+        veil = el('div');
+        veil.style.cssText = 'position:absolute;inset:0;pointer-events:auto;z-index:5';
+        veil.addEventListener('pointerup', (e) => { e.preventDefault(); m.key('confirm'); });
+        this.root.appendChild(veil);
+      }
+      if (indicator) { mark = el('div', 'next', '▼'); indicator.appendChild(mark); }
       this.push(m);
     });
   }
