@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Humanoid, Monster, angDiff } from '../actors/actor.js';
-import { MONSTERS } from './data.js';
+import { MONSTERS, MEMBERS } from './data.js';
 import { AREAS } from '../world/world.js';
 
 // 屋外の NPC（フィールドのマーカー位置）
@@ -38,6 +38,17 @@ export class Field {
     this.pos = new THREE.Vector3();
     this.vel = new THREE.Vector3();
     this.facing = 0;
+
+    // 仲間（パーティに入るまでは非表示）。勇者の足跡をたどって後ろを歩く
+    this.followers = {};
+    for (const [id, d] of Object.entries(MEMBERS)) {
+      if (id === 'hero' || !world.lib.has(d.model)) continue;
+      const h = new Humanoid(world.lib, d.model);
+      h.root.visible = false;
+      scene.add(h.root);
+      this.followers[id] = h;
+    }
+    this.trail = [];
 
     // カメラ
     this.cam = { yaw: 0, pitch: 0.32, dist: 8.5, target: new THREE.Vector3(), lastManual: 0 };
@@ -125,7 +136,64 @@ export class Field {
     this.vel.set(0, 0, 0);
     this.hero.root.position.copy(this.pos);
     this.hero.root.rotation.y = rot;
+    this.resetFollowers();
     this.snapCamera();
+  }
+
+  followerOf(id) { return this.followers[id]; }
+
+  /** パーティの並び順（勇者以外） */
+  partyFollowers() {
+    const s = this.g.state;
+    return s ? s.party.slice(1).map((m) => ({ m, h: this.followers[m.id] })).filter((x) => x.h) : [];
+  }
+
+  /** 勇者の真後ろに一列に並べ直す（ワープ・戦闘のあと） */
+  resetFollowers() {
+    const back = new THREE.Vector3(-Math.sin(this.facing), 0, -Math.cos(this.facing));
+    this.trail = [];
+    for (let k = 0; k < 40; k++) this.trail.push(this.pos.clone().addScaledVector(back, k * 0.25));
+    for (const f of Object.values(this.followers)) f.root.visible = false;
+    this.partyFollowers().forEach(({ h }, i) => {
+      const p = this.pos.clone().addScaledVector(back, (i + 1) * 1.5);
+      p.y = this.env.height(p.x, p.z);
+      h.root.position.copy(p);
+      h.root.rotation.y = this.facing;
+      h.root.visible = this.visibleAll !== false;
+      h.speed = 0;
+      h.stopOneShot(0.01);
+    });
+  }
+
+  updateFollowers(dt) {
+    const last = this.trail[0];
+    if (!last || last.distanceToSquared(this.pos) > 0.0625) {
+      this.trail.unshift(this.pos.clone());
+      if (this.trail.length > 60) this.trail.pop();
+    }
+    this.partyFollowers().forEach(({ h }, i) => {
+      // 足跡を 1.5m ごとにたどる
+      const want = (i + 1) * 1.5;
+      let acc = this.pos.distanceTo(this.trail[0] || this.pos), tgt = this.trail[this.trail.length - 1] || this.pos;
+      for (let k = 1; k < this.trail.length; k++) {
+        const seg = this.trail[k - 1].distanceTo(this.trail[k]);
+        if (acc + seg >= want) { tgt = this.trail[k - 1].clone().lerp(this.trail[k], (want - acc) / Math.max(seg, 1e-4)); break; }
+        acc += seg;
+      }
+      const p = h.root.position;
+      const d = new THREE.Vector3(tgt.x - p.x, 0, tgt.z - p.z);
+      const dist = d.length();
+      const sp = Math.min(dist / Math.max(dt, 1e-3), 8.5) * (dist > 0.05 ? 1 : 0);
+      if (dist > 0.02) {
+        p.x += d.x * Math.min(1, dt * 9);
+        p.z += d.z * Math.min(1, dt * 9);
+        h.root.rotation.y += angDiff(h.root.rotation.y, Math.atan2(d.x, d.z)) * Math.min(1, dt * 10);
+      }
+      p.y += (this.env.height(p.x, p.z) - p.y) * Math.min(1, dt * 18);
+      h.speed += (Math.min(sp, this.hero.speed + 0.6) - h.speed) * Math.min(1, dt * 8);
+      if (dist > 8) { p.copy(tgt); }
+      h.update(dt);
+    });
   }
 
   snapCamera() {
@@ -137,6 +205,7 @@ export class Field {
     this.visibleAll = v;
     for (const n of this.npcs) n.h.root.visible = v && n.env === this.env.id;
     for (const m of this.mons) m.root.visible = v;
+    for (const { h } of this.partyFollowers()) h.root.visible = v;
     if (v) this.placeBosses();
     else { this.boss.root.visible = this.guardian.root.visible = false; }
     if (!v) this.hint.classList.add('hidden');
@@ -188,6 +257,7 @@ export class Field {
     this.hero.root.rotation.y = this.facing;
     this.hero.speed = this.vel.length();
     this.hero.update(dt);
+    this.updateFollowers(dt);
 
     // 足音・砂ぼこり
     if (this.hero.speed > 1) {

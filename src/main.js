@@ -11,7 +11,8 @@ import { FX } from './fx.js';
 import { Field } from './game/field.js';
 import { Battle } from './game/battle.js';
 import { TALK, expForLevel, CHESTS, ITEMS, EQUIP } from './game/data.js';
-import { newState, derived, save, load, hasSave, gainExp } from './game/state.js';
+import { newState, save, load, hasSave, gainExp, healAll, addMember, memberName } from './game/state.js';
+import { Story } from './game/story.js';
 import { fieldMenu, inn, shop } from './game/menu.js';
 import { AREAS } from './world/world.js';
 import { CUT } from './world/surfaces.js';
@@ -34,6 +35,8 @@ class Game {
     this.fx = new FX(this.scene);
     this.mode = 'loading';
     this.t = 0;
+    this.tickers = new Set();   // イベント中に毎フレーム動かす処理
+    this.cine = null;           // イベント用カメラ
     this.state = null;
     this.renderer.onResize = () => this.resize();
     this.resize();
@@ -64,6 +67,7 @@ class Game {
     this.hud.buildBaseMap(this.world);
     this.hud.setVisible(false);
     this.field = new Field(this);
+    this.story = new Story(this);
     const st = this.world.marker('Start');
     this.field.place(st.pos, st.rot);
     this.sky.update(0, this.field.pos, this.camera);
@@ -79,7 +83,10 @@ class Game {
     if (dev.has('dev')) {
       this.state = newState('ユウト');
       this.state.flags.metKing = true;
-      if (dev.has('lv')) { gainExp(this.state, expForLevel(+dev.get('lv'))); const d = derived(this.state); this.state.hp = d.maxHp; this.state.mp = d.maxMp; }
+      if (dev.has('party')) for (const id of dev.get('party').split(',')) addMember(this.state, id);
+      if (dev.has('lv')) for (const m of this.state.party) gainExp(m, expForLevel(+dev.get('lv')));
+      if (dev.has('ev')) for (const k of dev.get('ev').split(',')) this.state.flags['ev_' + k] = true;
+      healAll(this.state);
       if (dev.has('t')) this.sky.time = +dev.get('t');
       if (dev.has('x')) this.field.place(new THREE.Vector3(+dev.get('x'), 0, +dev.get('z')), +(dev.get('r') || 0));
       this.sky.envTimer = 999;
@@ -96,6 +103,7 @@ class Game {
       if (dev.has('orb')) { this.state.flags.orb = this.state.flags.guardian = true; }
       if (dev.has('area')) setTimeout(() => this.enterInterior(dev.get('area'), dev.get('at') || 'S', true), 300);
       if (dev.has('boss')) setTimeout(async () => { await this.enterInterior('tower3', 'D', true); this.startBattle(null, 'dragon'); }, 300);
+      this.field.resetFollowers();
       return;
     }
     this.title();
@@ -129,7 +137,16 @@ class Game {
       this.input.poll(dt, true);
       f.hero.update(dt);
       for (const n of f.npcs) if (n.env === f.env.id) f.updateNpc(n, dt);
+      for (const { h } of f.partyFollowers()) if (!this.story.staged.some((x) => x.obj === h)) h.update(dt);
+      if (this.cine) {
+        const k = Math.min(1, dt * this.cine.speed);
+        this.camera.position.lerp(this.cine.pos, k);
+        this._cineLook = (this._cineLook || this.cine.look.clone()).lerp(this.cine.look, k);
+        this.camera.lookAt(this._cineLook);
+      } else this._cineLook = null;
     }
+    for (const fn of this.tickers) fn(dt);
+    if (this.mode === 'field' && this.state) this.story.check();
     const focus = this.mode === 'title' ? new THREE.Vector3(-40, 7, 60) : f.pos;
     this.sky.update(dt, focus, this.camera);
     // 時間帯の色調（夜は青く・彩度を落とす、夕方は暖色）
@@ -317,17 +334,13 @@ class Game {
     }
     // 王さまに会ったら少し休ませる（DQ 風）
     if (it.id === 'King') {
-      const d = derived(this.state);
-      if (this.state.hp < d.maxHp || this.state.mp < d.maxMp) {
-        this.state.hp = d.maxHp;
-        this.state.mp = d.maxMp;
-        this.hud.update();
-      }
+      healAll(this.state);
+      this.hud.update();
     }
   }
 
   // ------------------------------------------------------------ 戦闘
-  async startBattle(symbol, boss = null) {
+  async startBattle(symbol, boss = null, extra = {}) {
     if (this.mode !== 'field') return;
     this.mode = 'battle-trans';
     this.audio.sfx('encounter');
@@ -336,21 +349,22 @@ class Game {
     this.renderer.grade.uniforms.uBlur.value = 1;
     await this.ui.swirlIn();
     this.renderer.grade.uniforms.uBlur.value = 0;
-    this.battle = new Battle(this, { symbol, boss });
+    this.battle = new Battle(this, { symbol, boss, ...extra });
     this.mode = 'battle';
     this.hud.mapWrap.style.display = this.hud.clock.style.display = 'none';
     const result = await this.battle.run();
     this.battle = null;
     this.hud.mapWrap.style.display = this.hud.clock.style.display = '';
     await this.afterBattle(result, boss);
+    return result;
   }
 
   async afterBattle(result, boss) {
     if (result === 'lose') {
       await this.ui.fadeTo(1, 1200);
       if (!this.field.inField) this.leaveInterior();
-      const s = this.state, d = derived(s);
-      s.hp = d.maxHp; s.mp = d.maxMp;
+      const s = this.state;
+      healAll(s);
       s.gold = Math.floor(s.gold / 2);
       this.field.clearMonsters();
       await this.toKing();
@@ -373,6 +387,7 @@ class Game {
       this.updateMusic(true);
       this.hud.update();
       await this.ui.say(['がんせきの番人は くずれおちた……。', 'おくの さいだんで なにかが ひかっている。']);
+      await this.story.serenaEvent();
       return;
     }
     this.mode = 'field';
@@ -390,8 +405,9 @@ class Game {
     this.field.boss.lunge = 0.8;
     await this.ui.say([
       { who: '魔竜ヴァルザード', text: 'ほう…… ちいさき ひかりが ここまで きたか。' },
-      { who: '魔竜ヴァルザード', text: 'この せかいは まもなく わが やみに しずむ。 おまえの ひかりも ここで ついえるのだ！' },
+      { who: '魔竜ヴァルザード', text: 'この せかいは まもなく わが やみに しずむ。 おまえたちの ひかりも ここで ついえるのだ！' },
     ]);
+    await this.story.beforeDragon();
     this.field.boss.lunge = 0;
     this.mode = 'field';
     await this.startBattle(null, 'dragon');
@@ -469,6 +485,7 @@ class Game {
     this.field.cam.dist = Math.min(this.field.cam.dist, 10);
     this.field.snapCamera();
     this.hud.setMapEnv(floor);
+    this.story.onEnterFloor(floor);
     this.mode = 'field';
     this.updateMusic(true);
     if (!instant) await this.ui.fadeTo(0, 450);
@@ -480,6 +497,7 @@ class Game {
     this.world.setFieldVisible(true);
     this.field.setEnv(this.world.fieldEnv);
     this.hud.setMapEnv(null);
+    this.story.onEnterFloor(this.world.fieldEnv);
     this.sky.sun.castShadow = true;
     this.scene.background = null;
     this.field.area = undefined;
@@ -660,19 +678,22 @@ class Game {
     await ui.say([
       { who: '王さま', text: `おお ${s.name}！ よくぞ もどった！` },
       { who: '王さま', text: 'まおうの塔を おおっていた やみは きえ、 せかいに ふたたび ひかりが さしこんだ。' },
-      { who: '王さま', text: 'そなたこそ まことの ゆうしゃ。 この国の ほこりじゃ。 ほんとうに ありがとう。' },
+      { who: '王さま', text: s.party.length > 1 ? 'そなたたちこそ まことの ゆうしゃ。 この国の ほこりじゃ。 ほんとうに ありがとう。' : 'そなたこそ まことの ゆうしゃ。 この国の ほこりじゃ。 ほんとうに ありがとう。' },
     ]);
+    const epi = this.story.epilogue();
+    if (epi.length) await ui.say(epi);
     const end = document.createElement('div');
     end.id = 'ending';
     end.innerHTML = `<div class="roll">
       <h1>ひかりの伝説</h1>
       <h2>ゆうしゃ</h2>${s.name}
+      ${s.party.length > 1 ? `<h2>なかま</h2>${s.party.slice(1).map((m) => memberName(s, m)).join('<br>')}` : ''}
       <h2>フィールド・モデル</h2>Blender（Python スクリプトで生成）
       <h2>キャラクター</h2>メタボール造形・スキニング・アニメーション
       <h2>グラフィックス</h2>Three.js / WebGL
       <h2>おんがく・こうかおん</h2>オリジナル（WebAudio シンセサイザー）
       <h2>プレイじかん</h2>${Math.floor(s.playTime / 3600)}じかん ${Math.floor((s.playTime % 3600) / 60)}ふん
-      <h2>レベル</h2>${s.lv}
+      <h2>レベル</h2>${s.party.map((m) => `${memberName(s, m)}　Lv ${m.lv}`).join('<br>')}
       <br><br><br><h1>おわり</h1>
       <div style="font-size:16px">ありがとう ございました</div></div>`;
     this.uiRoot.appendChild(end);

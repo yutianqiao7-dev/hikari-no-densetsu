@@ -1,4 +1,4 @@
-import { derived } from '../game/state.js';
+import { derived, memberName } from '../game/state.js';
 
 /** 画面左上のステータス、右上のミニマップと時計 */
 export class HUD {
@@ -6,8 +6,7 @@ export class HUD {
     this.g = game;
     const root = game.ui.root;
     this.status = document.createElement('div');
-    this.status.className = 'win';
-    this.status.id = 'hud-status';
+    this.status.id = 'hud-party';
     root.appendChild(this.status);
 
     this.mapWrap = document.createElement('div');
@@ -82,17 +81,20 @@ export class HUD {
     this.mapEnv = { img: c, ox: floor.ox, oz: floor.oz, scale: floor.cell / px, floor };
   }
 
-  update() {
+  /** パーティ全員のステータス（active はコマンド入力中のメンバー） */
+  update(active) {
     const s = this.g.state;
     if (!s) return;
-    const d = derived(s);
-    const hpr = s.hp / d.maxHp;
-    this.status.className = 'win' + (s.hp <= 0 ? ' dead' : hpr < 0.3 ? ' danger' : '');
-    this.status.innerHTML = `
-      <div class="name">${s.name}</div>
-      <div class="row"><span>H</span><span>${s.hp}</span></div><div class="bar"><i style="width:${Math.max(0, hpr) * 100}%"></i></div>
-      <div class="row"><span>M</span><span>${s.mp}</span></div><div class="bar mp"><i style="width:${(s.mp / d.maxMp) * 100}%"></i></div>
-      <div class="row"><span class="lv">Lv</span><span class="lv">${s.lv}</span></div>`;
+    this.status.innerHTML = s.party.map((m) => {
+      const d = derived(m);
+      const hpr = m.hp / d.maxHp;
+      const cls = 'win member' + (m.hp <= 0 ? ' dead' : hpr < 0.3 ? ' danger' : '') + (active === m.id ? ' active' : '');
+      return `<div class="${cls}">
+        <div class="name">${memberName(s, m)}</div>
+        <div class="row"><span>H</span><span>${m.hp}</span></div><div class="bar"><i style="width:${Math.max(0, hpr) * 100}%"></i></div>
+        <div class="row"><span>M</span><span>${m.mp}</span></div><div class="bar mp"><i style="width:${d.maxMp ? (m.mp / d.maxMp) * 100 : 0}%"></i></div>
+        <div class="row"><span class="lv">Lv</span><span class="lv">${m.lv}</span></div></div>`;
+    }).join('');
   }
 
   setVisible(v) {

@@ -762,6 +762,28 @@ def build_gear(cfg, surf):
         ob = mb.build(name + "_Crown", COLL)
         rig_rigid(ob, 'head')
         out.append(ob)
+    # 魔女の帽子（ミリア）
+    if cfg.get('witch_hat'):
+        mb = CMB()
+        hm = mat(name + "_Hat", cfg['witch_hat'], 0.8)
+        mb.add('cyl', hm, loc=P((0, 0.01, 1.715)), r1=0.215 * hs, r2=0.2 * hs, depth=0.018, seg=36)
+        mb.tube([P((0, 0.01, 1.70)), P((0, 0.02, 1.83)), P((0, 0.05, 1.95)), P((0, 0.12, 2.05)), P((0, 0.2, 2.07))],
+                [0.118 * hs, 0.088 * hs, 0.058 * hs, 0.025 * hs, 0.004], hm, seg=18)
+        ring = [P((math.sin(k / 32 * math.tau) * 0.118, 0.01 - math.cos(k / 32 * math.tau) * 0.118, 1.735)) for k in range(33)]
+        mb.tube(ring, [0.012 * hs] * 33, mat("HatBand", (0.95, 0.75, 0.25), 0.4, 0.6), seg=8, flat=1.6)
+        mb.add('ico', mat("MagicGlow", (0.75, 0.35, 1.0), 0.2, emit=(0.75, 0.30, 1.0), emit_strength=4.0), loc=P((0.0, -0.11, 1.738)), r=0.022, sub=1)
+        ob = mb.build(name + "_Hat", COLL)
+        rig_rigid(ob, 'head')
+        out.append(ob)
+    # サークレット（セレナ）
+    if cfg.get('circlet'):
+        mb = CMB()
+        ring = [P((math.sin(k / 40 * math.tau) * 0.104, 0.012 - math.cos(k / 40 * math.tau) * 0.114, 1.668 + 0.02 * math.cos(k / 40 * math.tau))) for k in range(41)]
+        mb.tube(ring, [0.006 * hs] * 41, gold, seg=8, flat=1.4)
+        mb.add('sphere', mat("Sapphire", (0.15, 0.35, 1.0), 0.1), loc=P((0, -0.118, 1.69)), scale=(0.016, 0.01, 0.022))
+        ob = mb.build(name + "_Circlet", COLL)
+        rig_rigid(ob, 'head')
+        out.append(ob)
     # 兜
     if cfg.get('helmet'):
         mb = CMB()
@@ -824,6 +846,26 @@ def build_gear(cfg, surf):
         mb.add('sphere', mat("Sapphire", (0.15, 0.35, 1.0), 0.1), loc=a - (b - a).normalized() * 0.115, scale=(0.017, 0.017, 0.017))
         ob = mb.build(name + "_Sheath", COLL)
         rig_rigid(ob, 'chest')
+        out.append(ob)
+    if cfg.get('axe'):
+        mb = CMB()
+        iron = mat("AxeIron", (0.62, 0.64, 0.68), 0.3, 1.0)
+        mb.add('cyl', wood, loc=palm + Vector((0, 0, 0.12)), r1=0.022, r2=0.02, depth=1.05, seg=10)
+        top = palm + Vector((0, 0, 0.55))
+        for sd in (-1, 1):
+            # 三日月形の刃（前後に）
+            pts = [(0, 0, 0.13), (0, sd * 0.16, 0.2), (0, sd * 0.27, 0.08), (0, sd * 0.29, -0.06), (0, sd * 0.22, -0.18), (0, 0, -0.1)]
+            verts = [tuple(top + Vector(q)) for q in pts]
+            verts += [tuple(top + Vector(q) + Vector((0.025, 0, 0))) for q in pts]
+            n = len(pts)
+            faces = [tuple(range(n)), tuple(reversed(range(n, 2 * n)))]
+            for k in range(n):
+                faces.append((k, (k + 1) % n, n + (k + 1) % n, n + k))
+            mb.poly([tuple(Vector(v) - Vector((0.0125, 0, 0))) for v in verts], faces, iron, smooth=False)
+        mb.add('cube', gold, loc=top, scale=(0.06, 0.06, 0.12))
+        mb.add('cyl', iron, loc=top + Vector((0, 0, 0.17)), r1=0.025, r2=0.0, depth=0.12, seg=6)
+        ob = mb.build(name + "_Axe", COLL)
+        rig_rigid(ob, 'hand.R')
         out.append(ob)
     if cfg.get('spear'):
         mb = CMB()
@@ -981,6 +1023,19 @@ CHARS = [
     dict(name='Elder', build='slim', robe=True, sleeves='long', hair='bald', beard='long', staff='magic', eye=(0.25, 0.25, 0.3),
          colors=dict(skin=(0.98, 0.80, 0.70), top=(0.48, 0.38, 0.55), robe=(0.44, 0.34, 0.52), boot=(0.3, 0.2, 0.1),
                      hair=(0.9, 0.9, 0.9), beard=(0.95, 0.95, 0.95))),
+    # ---- 仲間
+    dict(name='Milia', build='female', scale=0.93, head_scale=1.15, dress=True, sleeves='short', hair='long', staff='magic',
+         witch_hat=(0.28, 0.14, 0.45), cape=(0.32, 0.18, 0.5), cape_len=0.62, eye=(0.2, 0.6, 0.35),
+         colors=dict(skin=SKIN_C, top=(0.5, 0.3, 0.72), dress=(0.42, 0.22, 0.62), pants=(0.96, 0.92, 0.86), boot=(0.32, 0.18, 0.3),
+                     belt=(0.95, 0.75, 0.25), hair=(0.98, 0.52, 0.28), ribbon=(0.95, 0.75, 0.25))),
+    dict(name='Gald', build='male', scale=1.1, head_scale=1.05, sleeves='long', gloves=True, hair='short', beard='short', armor=True,
+         axe=True, cape=(0.14, 0.32, 0.2), tunic_flare=True, tunic_len=0.8, eye=(0.25, 0.18, 0.1),
+         colors=dict(skin=(0.92, 0.72, 0.58), top=(0.38, 0.3, 0.24), pants=(0.3, 0.26, 0.22), boot=(0.26, 0.17, 0.1), belt=(0.25, 0.16, 0.08),
+                     glove=(0.35, 0.24, 0.14), hair=(0.55, 0.2, 0.08), beard=(0.5, 0.18, 0.08))),
+    dict(name='Serena', build='female', scale=0.96, head_scale=1.13, robe=True, sleeves='long', hair='long', staff='gold', circlet=True,
+         eye=(0.2, 0.35, 0.8),
+         colors=dict(skin=(1.0, 0.84, 0.74), top=(0.94, 0.94, 0.97), robe=(0.9, 0.92, 0.98), boot=(0.85, 0.8, 0.7),
+                     hair=(0.86, 0.88, 0.96), ribbon=(0.3, 0.5, 0.9), sash=(0.25, 0.45, 0.85))),
 ]
 
 # 既存の人型を削除（再実行用）

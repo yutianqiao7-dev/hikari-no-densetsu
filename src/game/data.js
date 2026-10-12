@@ -38,13 +38,46 @@ export function encounterTable(x, z, night) {
 }
 
 export const SPELLS = {
-  heal: { name: 'ヒール', mp: 3, lv: 2, target: 'self', field: true, desc: 'HPを 30ほど かいふく', power: [28, 36] },
-  fire: { name: 'ファイア', mp: 4, lv: 4, target: 'one', desc: 'てき1たいを ほのおで こうげき', power: [14, 20], fx: 'fire' },
-  lightning: { name: 'ライトニング', mp: 6, lv: 7, target: 'one', desc: 'いかずちで 大ダメージ', power: [34, 44], fx: 'lightning' },
-  highheal: { name: 'ハイヒール', mp: 6, lv: 9, target: 'self', field: true, desc: 'HPを 100ほど かいふく', power: [90, 110] },
-  storm: { name: 'フレイムストーム', mp: 9, lv: 12, target: 'all', desc: 'てき全体を ほのおの うずで つつむ', power: [30, 40], fx: 'storm' },
-  lightbreak: { name: 'ライトブレイク', mp: 15, lv: 15, target: 'one', desc: 'ひかりの つるぎで 会心の一撃', power: [120, 150], fx: 'light' },
-  warp: { name: 'リターン', mp: 4, lv: 5, target: 'field', field: true, desc: 'アルセリア城に もどる' },
+  heal: { name: 'ヒール', mp: 3, target: 'ally', field: true, desc: 'なかま1人の HPを 30ほど かいふく', power: [28, 36] },
+  highheal: { name: 'ハイヒール', mp: 6, target: 'ally', field: true, desc: 'なかま1人の HPを 100ほど かいふく', power: [90, 110] },
+  healall: { name: 'ヒールオール', mp: 9, target: 'allies', field: true, desc: 'なかま全員の HPを 45ほど かいふく', power: [40, 52] },
+  revive: { name: 'リザレク', mp: 12, target: 'dead', field: true, desc: 'たおれた なかまを いきかえらせる' },
+  fire: { name: 'ファイア', mp: 3, target: 'one', desc: 'てき1たいを ほのおで こうげき', power: [14, 20], fx: 'fire' },
+  storm: { name: 'フレイムストーム', mp: 8, target: 'all', desc: 'てき全体を ほのおの うずで つつむ', power: [26, 36], fx: 'storm' },
+  blizzard: { name: 'ブリザード', mp: 7, target: 'one', desc: 'こおりの あらしで 大ダメージ', power: [42, 54], fx: 'ice' },
+  lightning: { name: 'ライトニング', mp: 6, target: 'one', desc: 'いかずちで 大ダメージ', power: [34, 44], fx: 'lightning' },
+  lightbreak: { name: 'ライトブレイク', mp: 15, target: 'one', desc: 'ひかりの つるぎで 会心の一撃', power: [120, 150], fx: 'light' },
+  warcry: { name: 'おたけび', mp: 0, target: 'all', desc: 'てき全体を ひるませ ダメージ', power: [10, 16], fx: 'roar', skill: true },
+  smashall: { name: 'だいせんぷう', mp: 0, target: 'all', desc: 'おのを ふりまわし てき全体を きる', power: [0, 0], fx: 'whirl', skill: true, melee: 0.75 },
+  warp: { name: 'リターン', mp: 4, target: 'field', field: true, desc: 'アルセリア城に もどる' },
+};
+
+/** パーティメンバー：成長・習得呪文（習得レベル）・初期装備 */
+export const MEMBERS = {
+  hero: {
+    name: null, model: 'Hero', role: 'ゆうしゃ',
+    base: { hp: 24, mp: 6, str: 9, agi: 7 }, grow: { hp: 9, mp: 3.6, str: 3.4, agi: 2.6 },
+    spells: { heal: 2, warp: 5, lightning: 8, lightbreak: 15 },
+    equip: { weapon: 'sword_copper', armor: 'armor_cloth', shield: 'shield_leather' },
+  },
+  milia: {
+    name: 'ミリア', model: 'Milia', role: 'まほうつかい', minLv: 2,
+    base: { hp: 16, mp: 14, str: 5, agi: 9 }, grow: { hp: 6, mp: 5.5, str: 1.8, agi: 2.9 },
+    spells: { fire: 1, storm: 6, blizzard: 10 },
+    equip: { weapon: 'staff_oak', armor: 'robe_silk', shield: null },
+  },
+  gald: {
+    name: 'ガルド', model: 'Gald', role: 'せんし', minLv: 4,
+    base: { hp: 34, mp: 0, str: 13, agi: 5 }, grow: { hp: 11, mp: 0, str: 4.2, agi: 2.0 },
+    spells: { warcry: 4, smashall: 9 },
+    equip: { weapon: 'axe_iron', armor: 'armor_chain', shield: null },
+  },
+  serena: {
+    name: 'セレナ', model: 'Serena', role: 'しんかん', minLv: 6,
+    base: { hp: 20, mp: 16, str: 6, agi: 8 }, grow: { hp: 7, mp: 5.2, str: 2.0, agi: 2.5 },
+    spells: { heal: 1, highheal: 5, healall: 8, revive: 11 },
+    equip: { weapon: 'staff_holy', armor: 'robe_silk', shield: null },
+  },
 };
 
 export const ITEMS = {
@@ -55,6 +88,10 @@ export const ITEMS = {
 
 export const EQUIP = {
   sword_copper: { name: 'どうのつるぎ', slot: 'weapon', atk: 6, price: 100 },
+  staff_oak: { name: 'かしのつえ', slot: 'weapon', atk: 3, price: 40 },
+  staff_holy: { name: 'せいなるつえ', slot: 'weapon', atk: 6, price: 300 },
+  axe_iron: { name: 'てつのおの', slot: 'weapon', atk: 18, price: 500 },
+  robe_silk: { name: 'シルクのローブ', slot: 'armor', def: 7, price: 150 },
   sword_iron: { name: 'てつのつるぎ', slot: 'weapon', atk: 15, price: 380 },
   sword_steel: { name: 'はがねのつるぎ', slot: 'weapon', atk: 26, price: 1300 },
   sword_light: { name: 'ひかりのつるぎ', slot: 'weapon', atk: 42, price: 3800 },
@@ -86,15 +123,6 @@ export const SHOP = ['herb', 'ether', 'wing', 'sword_iron', 'sword_steel', 'swor
 
 export const MAX_LV = 20;
 export function expForLevel(lv) { return lv <= 1 ? 0 : Math.round(9 * Math.pow(lv - 1, 2.35) + 6 * (lv - 1)); }
-export function statsForLevel(lv) {
-  const l = lv - 1;
-  return {
-    maxHp: Math.round(24 + l * 9 + Math.pow(l, 1.55)),
-    maxMp: Math.round(6 + l * 4.2),
-    str: Math.round(9 + l * 3.4),
-    agi: Math.round(7 + l * 2.6),
-  };
-}
 
 
 /** 会話。関数は (game) を受け取り、行の配列を返す */
@@ -119,7 +147,8 @@ export const TALK = {
         { who: '王さま', text: 'では ゆけ、 ゆうしゃよ！' },
       ];
     }
-    const need = s.lv >= MAX_LV ? 0 : expForLevel(s.lv + 1) - s.exp;
+    const hero = s.party[0];
+    const need = hero.lv >= MAX_LV ? 0 : expForLevel(hero.lv + 1) - hero.exp;
     return [
       { who: '王さま', text: `おお ${s.name}！ よくぞ もどった。` },
       need > 0 ? { who: '王さま', text: `そなたが つぎの レベルに なるには あと ${need}ポイントの けいけんが ひつようじゃ。` }
