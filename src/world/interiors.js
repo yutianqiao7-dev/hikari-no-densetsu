@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { Colliders } from './colliders.js';
 
-const WALK_BLOCK = new Set(['#', 'W', 'P', 'T']);
+const WALK_BLOCK = new Set(['#', 'W', 'P', 'T', 'b', 't', 'c', 'h', 'k', 'f', 'y', 'n', 'p']);
+const FURNITURE = 'bthkfn';
 
 /**
  * ダンジョン・塔の 1 フロア。フィールドと同じインターフェース（env）を持つ。
@@ -12,7 +13,11 @@ class Floor {
     this.kind = 'interior';
     this.id = info.id;
     this.name = info.name;
-    this.style = info.kind;           // 'cave' | 'tower'
+    this.style = info.kind;           // 'cave' | 'tower' | 'room' | 'castle'
+    this.indoor = info.kind === 'room' || info.kind === 'castle';
+    this.door = info.door;
+    this.exit = info.exit;
+    this.pots = (info.pots || []).map((p) => ({ ...p, pos: new THREE.Vector3(p.x, 0, p.z) }));
     this.info = info;
     this.group = group;
     this.owner = owner;
@@ -40,6 +45,9 @@ class Floor {
       if (c === '#') this.colliders.add({ x, z, hw: half, hd: half, rot: 0 });
       else if (c === 'P') this.colliders.add({ x, z, r: 0.95 });
       else if (c === 'T') this.colliders.add({ x, z, r: 0.7 });
+      else if (FURNITURE.includes(c)) this.colliders.add({ x, z, hw: half - 0.08, hd: half - 0.08, rot: 0 });
+      else if (c === 'y') this.colliders.add({ x, z, r: 0.45 });
+      else if (c === 'p') this.colliders.add({ x, z, r: 0.62 });
     }
     for (const c of this.chests) this.colliders.add({ x: c.x, z: c.z, hw: 0.55, hd: 0.4, rot: c.rot });
     this.lastCell = null;
@@ -69,10 +77,11 @@ class Floor {
     const s = this.spots[kind] && this.spots[kind][0];
     if (!s) return null;
     const [i, j] = this.cellOf(s[0], s[1]);
-    const dirs = [[0, 1], [1, 0], [-1, 0], [0, -1]];
+    // 外周から離れる向きを優先（入ってきた扉を背にする）
+    const dirs = j > this.H / 2 ? [[0, -1], [1, 0], [-1, 0], [0, 1]] : [[0, 1], [1, 0], [-1, 0], [0, -1]];
     for (const [di, dj] of dirs) {
       const c = this.at(i + di, j + dj);
-      if (c === '.' || c === 'R') {
+      if (c === '.' || c === 'R' || c === 'r') {
         const [x, z] = this.center(i + di, j + dj);
         this.lastCell = `${i + di},${j + dj}`;
         return { pos: new THREE.Vector3(x, 0, z), rot: Math.atan2(di, dj) };
@@ -89,6 +98,7 @@ class Floor {
 
   /** モンスターの出現位置（プレイヤーから離れた床） */
   spawnPoint(p) {
+    if (this.indoor) return null;
     for (let k = 0; k < 8; k++) {
       const i = Math.floor(Math.random() * this.W), j = Math.floor(Math.random() * this.H);
       if (this.at(i, j) !== '.' && this.at(i, j) !== 'R') continue;
@@ -151,7 +161,7 @@ export class Interiors {
     if (!f) return;
     // ランタン
     this.lantern.position.set(heroPos.x, heroPos.y + 2.4, heroPos.z);
-    this.lantern.intensity = (f.style === 'cave' ? 9 : 6) + Math.sin(t * 7) * 0.4;
+    this.lantern.intensity = f.indoor ? 0 : (f.style === 'cave' ? 9 : 6) + Math.sin(t * 7) * 0.4;
     // 光源（かがり火・水晶・出口の光）を近い順に
     this.assignT -= dt;
     if (this.assignT <= 0) {
@@ -164,7 +174,8 @@ export class Interiors {
       });
     }
     this.lights.forEach((l, i) => {
-      l.intensity = l.userData.torch ? 22 + Math.sin(t * 13 + i * 5) * 3 + Math.sin(t * 7.3 + i) * 2 : 14;
+      const base = f.indoor ? (l.userData.torch ? 10 : 9) : (l.userData.torch ? 22 : 14);
+      l.intensity = l.userData.torch ? base + Math.sin(t * 13 + i * 5) * 2 + Math.sin(t * 7.3 + i) * 1.5 : base;
     });
     // 炎のパーティクル
     this.emitT -= dt;
@@ -172,7 +183,8 @@ export class Interiors {
       this.emitT = 0.05;
       for (const p of f.torches) {
         if (p.distanceToSquared(heroPos) > 45 * 45) continue;
-        this.fx.emit({ pos: p.clone().add(new THREE.Vector3(0, 0.05, 0)), count: 2, color: [0xffcc55, 0xff7722, 0xff4411], speed: 0.25, up: 1.6, life: 0.55, size: 0.45, grow: -0.6, drag: 1.5, spread: 0.35, flat: true });
+        const small = f.indoor;
+        this.fx.emit({ pos: p.clone().add(new THREE.Vector3(0, 0.05, 0)), count: small ? 1 : 2, color: [0xffcc55, 0xff7722, 0xff4411], speed: 0.25, up: small ? 0.9 : 1.6, life: small ? 0.4 : 0.55, size: small ? 0.22 : 0.45, grow: -0.6, drag: 1.5, spread: small ? 0.15 : 0.35, flat: true });
         if (Math.random() < 0.1) this.fx.emit({ pos: p.clone().add(new THREE.Vector3(0, 0.6, 0)), count: 1, color: 0xffaa44, speed: 0.4, up: 2.4, life: 1.4, size: 0.08, drag: 0.5 });
       }
     }

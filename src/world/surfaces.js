@@ -69,6 +69,35 @@ const PATTERNS = {
     diffuseColor.rgb = c;
     vRough = mix(1.0, 0.45, wet);
   `,
+  fabric: /* glsl */`
+    vec2 uv = vW.xz;
+    float weave = sin(uv.x * 60.0) * sin(uv.y * 60.0) * 0.5 + 0.5;
+    float n = fbm3(uv * 1.5);
+    vec3 c = diffuseColor.rgb * (0.8 + n * 0.3) * (0.93 + weave * 0.08);
+    // ふちの金色の模様
+    vec2 f = fract(uv / 2.0);
+    float edge = step(0.92, max(abs(f.x - 0.5), abs(f.y - 0.5)) * 2.0);
+    diffuseColor.rgb = c;
+    vRough = 1.0;
+  `,
+  planks: /* glsl */`
+    float pw = 0.28;
+    float row = floor(vW.z / pw);
+    float len = 1.6 + h21(vec2(row, 3.1)) * 1.2;
+    float px = vW.x / len + h21(vec2(row, 7.7));
+    float col = floor(px);
+    vec2 f = vec2(fract(px), fract(vW.z / pw));
+    float gap = smoothstep(0.0, 0.045, f.y) * smoothstep(1.0, 0.955, f.y) * smoothstep(0.0, 0.012, f.x) * smoothstep(1.0, 0.988, f.x);
+    float var = h21(vec2(col, row)) - 0.5;
+    float grain = vnoise(vec2(vW.x * 1.2, vW.z * 26.0 + row * 13.0)) * 0.6 + vnoise(vec2(vW.x * 4.0, vW.z * 60.0)) * 0.4;
+    float knot = smoothstep(0.08, 0.0, length(vec2(fract(px * 2.3 + row) - 0.5, (f.y - 0.5) * 0.35))) * step(0.7, h21(vec2(col * 1.3, row)));
+    vec3 c = diffuseColor.rgb * (0.9 + var * 0.35) * (0.82 + grain * 0.3);
+    c *= 1.0 - knot * 0.45;
+    c = mix(c * 0.35, c, gap);
+    diffuseColor.rgb = c;
+    vRough = mix(0.95, 0.55, gap);
+  `,
+  none: '',
   plaster: /* glsl */`
     float n = fbm3(vW.xy * 0.8 + vW.zx * 0.8);
     float stain = smoothstep(0.55, 0.85, fbm3(vec2(vW.x + vW.z, vW.y * 2.5) * 0.35));
@@ -94,13 +123,15 @@ function kindOf(name) {
   if (/^(Stone|StoneDark|TowerStone|StoneFloor)$/.test(name)) return 'stone';
   if (/^(CaveRock|CaveRockDark|CaveFloor)$/.test(name)) return 'rock';
   if (/^Roof|TowerRoof/.test(name)) return 'roof';
+  if (name === 'WoodFloor') return 'planks';
   if (/^(Wood|WoodDark|Bark|Door)$/.test(name)) return 'wood';
   if (/^Plaster$/.test(name)) return 'plaster';
+  if (/^(Carpet|TowerCarpet)$/.test(name)) return 'fabric';
   return null;
 }
 
 export function enhanceSurface(mat, heightTex, uvParams, cut = false) {
-  const kind = kindOf(mat.name || '');
+  const kind = kindOf(mat.name || '') || (cut ? 'none' : null);
   if (!kind || mat.userData.enhanced) return;
   mat.userData.enhanced = true;
   if (kind === 'stone') mat.color.multiplyScalar(0.78);

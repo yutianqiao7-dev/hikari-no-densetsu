@@ -48,9 +48,9 @@ def bone_table():
     for side, s in (('L', 1), ('R', -1)):
         t += [
             (f'shoulder.{side}', (s * 0.03, 0, 1.385), (s * 0.165, 0.01, 1.385), 'chest', 0.06),
-            (f'upper_arm.{side}', (s * 0.165, 0.01, 1.385), (s * 0.355, 0.02, 1.175), f'shoulder.{side}', 0.048),
-            (f'forearm.{side}', (s * 0.355, 0.02, 1.175), (s * 0.515, -0.01, 0.995), f'upper_arm.{side}', 0.04),
-            (f'hand.{side}', (s * 0.515, -0.01, 0.995), (s * 0.58, -0.025, 0.915), f'forearm.{side}', 0.035),
+            (f'upper_arm.{side}', (s * 0.165, 0.01, 1.385), (s * 0.30, 0.015, 1.133), f'shoulder.{side}', 0.048),
+            (f'forearm.{side}', (s * 0.30, 0.015, 1.133), (s * 0.415, -0.01, 0.917), f'upper_arm.{side}', 0.04),
+            (f'hand.{side}', (s * 0.415, -0.01, 0.917), (s * 0.445, -0.025, 0.838), f'forearm.{side}', 0.035),
             (f'thigh.{side}', (s * 0.092, 0, 0.92), (s * 0.10, -0.005, 0.50), 'hips', 0.08),
             (f'shin.{side}', (s * 0.10, -0.005, 0.50), (s * 0.10, 0.015, 0.085), f'thigh.{side}', 0.06),
             (f'foot.{side}', (s * 0.10, 0.015, 0.085), (s * 0.10, -0.115, 0.025), f'shin.{side}', 0.045),
@@ -999,9 +999,9 @@ def R(x=0.0, y=0.0, z=0.0):
 
 
 BASE = {
-    'upper_arm.L': R(y=0.62), 'upper_arm.R': R(y=-0.62),
+    'upper_arm.L': R(y=0.3), 'upper_arm.R': R(y=-0.3),
     'forearm.L': R(x=-0.18), 'forearm.R': R(x=-0.18),
-    'hand.L': R(y=0.15), 'hand.R': R(y=-0.15),
+    'hand.L': R(y=0.1), 'hand.R': R(y=-0.1),
 }
 
 
@@ -1048,29 +1048,63 @@ def make_actions(arm):
             'cape.1': R(x=0.03 + 0.02 * br), 'cape.2': R(x=0.02 * br),
         }), hip_dz=-0.004 * (1 - br) * 0.5)
 
-    def locomotion(name, n, th, kn, arm_sw, fore, lean, bob, cape1, cape2, twist):
-        new_action(arm, name)
-        steps = 8
-        for i in range(steps + 1):
-            f = round(i / steps * n)
-            p = i / steps * math.tau
-            sp, cp = math.sin(p), math.cos(p)
-            kL = 0.1 + kn * max(0.0, cp) ** 1.3
-            kR = 0.1 + kn * max(0.0, -cp) ** 1.3
-            pose = compose(BASE, {
-                'thigh.L': R(x=-th * sp - 0.05), 'thigh.R': R(x=th * sp - 0.05),
-                'shin.L': R(x=kL), 'shin.R': R(x=kR),
-                'foot.L': R(x=-0.25 * kL + 0.15 * sp), 'foot.R': R(x=-0.25 * kR - 0.15 * sp),
-                'upper_arm.L': R(x=arm_sw * sp), 'upper_arm.R': R(x=-arm_sw * sp),
-                'forearm.L': R(x=-fore * (0.6 + 0.4 * max(0, -sp))), 'forearm.R': R(x=-fore * (0.6 + 0.4 * max(0, sp))),
-                'hips': R(z=twist * sp), 'spine': R(x=lean * 0.5), 'chest': R(x=lean * 0.5, z=-twist * 1.4 * sp),
-                'head': R(x=-lean * 0.6, z=twist * 0.4 * sp),
-                'cape.1': R(x=cape1 + 0.05 * math.sin(2 * p)), 'cape.2': R(x=cape2 + 0.08 * math.sin(2 * p + 1)),
-            })
-            key_pose(arm, f, pose, hip_dz=-bob * (0.5 + 0.5 * math.cos(2 * p)))
+    def cyc(table, phi):
+        """8 キーの周期テーブルを Catmull-Rom で補間（phi: 0..1）"""
+        n = len(table)
+        x = (phi % 1.0) * n
+        i = int(x)
+        t = x - i
+        p0, p1, p2, p3 = table[(i - 1) % n], table[i % n], table[(i + 1) % n], table[(i + 2) % n]
+        return 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t)
 
-    locomotion("Walk", 32, 0.48, 0.75, 0.38, 0.25, 0.05, 0.022, 0.18, 0.1, 0.07)
-    locomotion("Run", 20, 0.85, 1.35, 0.75, 1.1, 0.28, 0.045, 0.75, 0.35, 0.12)
+    def locomotion(name, n, C):
+        """歩行・走行：接地 → 沈み込み → パッシング → 蹴り出し の 8 キーポーズ。
+        足首はかかと着地からつま先離地まで地面に沿うよう、太もも＋すねの角度を打ち消して決める"""
+        new_action(arm, name)
+        keys = 16
+        for i in range(keys + 1):
+            f = round(i / keys * n)
+            phi = i / keys
+            pose = dict(BASE)
+            legs = {}
+            for side, off in (('L', 0.0), ('R', 0.5)):
+                ph = phi + off
+                th = cyc(C['thigh'], ph)
+                sh = cyc(C['shin'], ph)
+                fa = cyc(C['foot'], ph)
+                legs[side] = (th, sh, fa - (th + sh))
+            c = math.cos(phi * math.tau)
+            sn = math.sin(phi * math.tau)
+            ca = math.cos((phi - C['lag']) * math.tau)
+            anim = {
+                'thigh.L': R(x=legs['L'][0]), 'shin.L': R(x=legs['L'][1]), 'foot.L': R(x=legs['L'][2]),
+                'thigh.R': R(x=legs['R'][0]), 'shin.R': R(x=legs['R'][1]), 'foot.R': R(x=legs['R'][2]),
+                'hips': R(z=-C['yaw'] * c, y=-C['roll'] * sn),
+                'spine': R(x=C['lean'] * 0.5, z=C['yaw'] * 0.5 * c),
+                'chest': R(x=C['lean'] * 0.5, z=C['yaw'] * 0.9 * c, y=C['roll'] * 0.6 * sn),
+                'neck': R(z=-C['yaw'] * 0.3 * c),
+                'head': R(x=-C['lean'] * 0.7, z=-C['yaw'] * 0.1 * c),
+                'upper_arm.L': R(x=C['arm'] * ca), 'upper_arm.R': R(x=-C['arm'] * ca),
+                'forearm.L': R(x=-C['elbow'] - C['elbow2'] * max(0.0, -ca)), 'forearm.R': R(x=-C['elbow'] - C['elbow2'] * max(0.0, ca)),
+                'cape.1': R(x=C['cape'] + 0.05 * math.sin(2 * phi * math.tau)),
+                'cape.2': R(x=C['cape'] * 0.5 + 0.08 * math.sin(2 * phi * math.tau + 1)),
+            }
+            for k_, q in anim.items():
+                pose[k_] = q @ pose[k_] if k_ in pose else q
+            key_pose(arm, f, pose, hip_dz=cyc(C['bob'], phi * 2))
+
+    locomotion("Walk", 32, dict(
+        thigh=[-0.42, -0.30, -0.02, 0.22, 0.38, 0.15, -0.25, -0.45],
+        shin=[0.06, 0.28, 0.08, 0.12, 0.35, 1.05, 0.85, 0.30],
+        foot=[-0.32, 0.0, 0.0, 0.12, 0.55, 0.35, 0.10, -0.15],
+        bob=[-0.018, -0.034, -0.012, 0.012, 0.008, -0.004, -0.01, -0.016],
+        yaw=0.09, roll=0.045, lean=0.05, arm=0.32, elbow=0.2, elbow2=0.3, lag=0.05, cape=0.18))
+    locomotion("Run", 20, dict(
+        thigh=[-0.78, -0.45, 0.05, 0.55, 0.65, 0.2, -0.55, -0.88],
+        shin=[0.25, 0.6, 0.35, 0.35, 1.1, 1.9, 1.6, 0.7],
+        foot=[-0.15, 0.05, 0.15, 0.6, 0.9, 0.5, 0.2, -0.05],
+        bob=[-0.035, -0.065, -0.02, 0.03, 0.045, 0.03, 0.0, -0.02],
+        yaw=0.13, roll=0.035, lean=0.32, arm=0.85, elbow=1.15, elbow2=0.35, lag=0.04, cape=0.75))
 
     # Attack（剣を振り下ろす 26f）
     new_action(arm, "Attack")

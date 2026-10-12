@@ -112,7 +112,7 @@ class Game {
       this.camera.position.set(-40 + Math.sin(a) * 105, 42 + Math.sin(this.t * 0.11) * 6, 60 + Math.cos(a) * 105);
       this.camera.lookAt(-40, 14, 60);
       f.hero.update(dt);
-      for (const n of f.npcs) f.updateNpc(n, dt);
+      for (const n of f.npcs) if (n.env === 'field') f.updateNpc(n, dt);
     } else if (this.mode === 'field') {
       const busy = this.ui.busy;
       const mv = this.input.poll(dt, busy);
@@ -128,7 +128,7 @@ class Game {
     } else if (this.mode === 'cutscene') {
       this.input.poll(dt, true);
       f.hero.update(dt);
-      for (const n of f.npcs) f.updateNpc(n, dt);
+      for (const n of f.npcs) if (n.env === f.env.id) f.updateNpc(n, dt);
     }
     const focus = this.mode === 'title' ? new THREE.Vector3(-40, 7, 60) : f.pos;
     this.sky.update(dt, focus, this.camera);
@@ -276,7 +276,7 @@ class Game {
   }
 
   fieldMusic() {
-    if (!this.field.inField) return this.field.env.style === 'cave' ? 'cave' : 'tower';
+    if (!this.field.inField) return { cave: 'cave', tower: 'tower', castle: 'castle', room: 'town' }[this.field.env.style] || 'town';
     const a = this.field.area;
     if (a && AREAS[a].music) return AREAS[a].music;
     return this.sky.night > 0.55 ? 'field_night' : 'field';
@@ -296,6 +296,7 @@ class Game {
     this.audio.sfx('confirm');
     if (it.kind === 'boss') { await this.bossEvent(); return; }
     if (it.kind === 'chest') { await this.openChest(it.obj); return; }
+    if (it.kind === 'pot') { await this.searchPot(it.obj); return; }
     if (it.kind === 'orb') { await this.orbEvent(); return; }
     if (it.kind === 'guardian') { await this.guardianEvent(); return; }
     if (it.kind === 'sign') { await this.ui.say(TALK[it.id](this)); return; }
@@ -351,10 +352,8 @@ class Game {
       const s = this.state, d = derived(s);
       s.hp = d.maxHp; s.mp = d.maxMp;
       s.gold = Math.floor(s.gold / 2);
-      const k = this.world.marker('King');
-      const p = k.pos.clone().add(new THREE.Vector3(Math.sin(k.rot) * 3.2, 0, Math.cos(k.rot) * 3.2));
-      this.field.place(p, k.rot + Math.PI);
       this.field.clearMonsters();
+      await this.toKing();
       this.mode = 'field';
       this.hud.update();
       this.updateMusic(true);
@@ -402,8 +401,8 @@ class Game {
   /** フィールドの出入口（洞窟・塔の扉）に近づいた */
   async onDoor(id) {
     if (this.mode !== 'field' || this.ui.busy) return;
-    if (id === 'cave') { await this.enterInterior('cave1', 'S'); return; }
-    if (id === 'tower') {
+    if (id !== 'tower1') { await this.enterInterior(id, 'S'); return; }
+    {
       const fl = this.state.flags;
       if (!fl.orb) {
         this.mode = 'cutscene';
@@ -443,7 +442,7 @@ class Game {
       'tower1:U': ['tower2', 'D'], 'tower2:D': ['tower1', 'U'],
       'tower2:U': ['tower3', 'D'], 'tower3:D': ['tower2', 'U'],
     };
-    if (c === 'S') { await this.exitToField(id.startsWith('cave') ? 'CaveExit' : 'TowerExit'); return; }
+    if (c === 'S') { await this.exitToField(this.field.env.exit); return; }
     const to = links[`${id}:${c}`];
     if (to) await this.enterInterior(to[0], to[1]);
   }
@@ -493,6 +492,7 @@ class Game {
     this.leaveInterior();
     const m = this.world.marker(markerName);
     this.field.place(m.pos, m.rot);
+    this.field.area = this.world.areaAt(m.pos.x, m.pos.z);
     this.field.cam.pitch = 0.32;
     this.field.snapCamera();
     this.sky.envTimer = 999;
@@ -505,6 +505,26 @@ class Game {
   applyInteriorLighting() {
     const cave = this.field.env.style === 'cave';
     const sky = this.sky;
+    if (this.field.env.indoor) {
+      // 建物の中：窓からの光と暖炉・燭台で明るく暖かく
+      const castle = this.field.env.style === 'castle';
+      if (!this._black) this._black = new THREE.Color(0, 0, 0);
+      this.scene.background = this._black;
+      this.scene.fog.color.setRGB(0.05, 0.04, 0.03);
+      this.scene.fog.density = 0.012;
+      sky.sun.intensity = 0;
+      sky.sun.castShadow = false;
+      sky.hemi.color.setRGB(1.0, 0.92, 0.8);
+      sky.hemi.groundColor.setRGB(0.32, 0.24, 0.16);
+      sky.hemi.intensity = castle ? 1.25 : 1.35;
+      this.scene.environmentIntensity = 0.35;
+      this.renderer.r.toneMappingExposure = 0.95;
+      const gu = this.renderer.grade.uniforms;
+      gu.uSaturation.value = 1.08;
+      gu.uTint.value.set(1.04, 1.0, 0.94);
+      gu.uVignette.value = 0.45;
+      return;
+    }
     if (!this._black) this._black = new THREE.Color(0, 0, 0);
     this.scene.background = this._black;
     this.scene.fog.color.setRGB(cave ? 0.012 : 0.02, cave ? 0.011 : 0.012, cave ? 0.01 : 0.03);
@@ -550,6 +570,35 @@ class Game {
     await this.ui.say([`${s.name}は たからばこを あけた！`, text].concat(got.equip ? ['（メニューの「そうび」で そうび できます）'] : []));
     this.hud.update();
     this.mode = 'field';
+  }
+
+  /** つぼ・たるを調べる */
+  async searchPot(p) {
+    const fl = this.state.flags;
+    fl.pots = fl.pots || {};
+    if (fl.pots[p.id]) return;
+    fl.pots[p.id] = true;
+    this.mode = 'cutscene';
+    let h = 0;
+    for (const ch of p.id) h = (h * 31 + ch.charCodeAt(0)) % 997;
+    const s = this.state;
+    const r = h % 10;
+    const lines = [`${s.name}は つぼの なかを しらべた。`];
+    if (r < 4) { this.addItem('herb', 1); lines.push('やくそうを みつけた！'); this.audio.sfx('item'); }
+    else if (r < 7) { const gld = 10 + (h % 4) * 10; s.gold += gld; lines.push(`${gld}ゴールドを みつけた！`); this.audio.sfx('coin'); }
+    else if (r < 8) { this.addItem('ether', 1); lines.push('まほうのせいすいを みつけた！'); this.audio.sfx('item'); }
+    else lines.push('しかし なにも みつからなかった。');
+    await this.ui.say(lines);
+    this.hud.update();
+    this.mode = 'field';
+  }
+
+  /** 玉座の間で王さまの前に立つ（全滅・エンディング） */
+  async toKing() {
+    if (!this.field.inField) this.leaveInterior();
+    const floor = this.world.interiors.floors.keep;
+    const k = floor.spots.K[0];
+    await this.enterInterior('keep', { x: k[0], z: k[1] + 2.8, rot: Math.PI }, true);
   }
 
   async guardianEvent() {
@@ -600,11 +649,9 @@ class Game {
     this.mode = 'cutscene';
     s.flags.cleared = true;
     await ui.fadeTo(1, 2000);
-    if (!this.field.inField) this.leaveInterior();
     this.field.clearMonsters();
-    const k = this.world.marker('King');
-    const p = k.pos.clone().add(new THREE.Vector3(Math.sin(k.rot) * 3.2, 0, Math.cos(k.rot) * 3.2));
-    this.field.place(p, k.rot + Math.PI);
+    await this.toKing();
+    this.mode = 'cutscene';
     this.sky.time = 0.42;
     this.sky.envTimer = 999;
     this.audio.play('ending');

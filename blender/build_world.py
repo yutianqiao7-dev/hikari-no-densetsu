@@ -483,6 +483,8 @@ def build_castle():
     collider("Hedge", cx + 16, cz + 10, 7, 7, top=2)
 
     marker("Start", cx, cz + D / 2 + 10, rot=math.pi)
+    marker("Door_Keep", cx, cz - 6.0, rot=0.0)
+    marker("DoorExit_Keep", cx, cz - 3.0, rot=0.0)
     marker("King", cx, cz - 3.2, rot=0.0)
     marker("Guard1", cx - 4.5, cz - 2.5, rot=0.0)
     marker("Guard2", cx + 4.5, cz - 2.5, rot=0.0)
@@ -532,6 +534,15 @@ def build_house(name, x, z, rot, w, d, wh, roof_m, inn=False, shop=False):
                 mb.add('ico', M_FLOWER[(k + int(abs(wx))) % 3], loc=(wx - 0.4 + k * 0.2, -d / 2 - 0.36, 0.7 + wh * 0.6 - 0.5), r=0.08, sub=1)
     mb.build(name, C_BLDG, loc=B(x, z, y), rot_z=rot)
     collider(name, x, z, w + 0.8, d + 0.8, rot, top=wh + 3)
+    # 扉（入ると室内へ）：扉の前と、出てきたときの立ち位置
+    def lg(lx, ly):
+        bx = x + lx * math.cos(rot) - ly * math.sin(rot)
+        by = -z + lx * math.sin(rot) + ly * math.cos(rot)
+        return bx, -by
+    dx_, dz_ = lg(0, -(d / 2 + 0.75))
+    marker("Door_" + name, dx_, dz_, rot=rot)
+    ex_, ez_ = lg(0, -(d / 2 + 3.2))
+    marker("DoorExit_" + name, ex_, ez_, rot=rot)
     # 煙突の先（ゲーム側で煙を出す）
     lx, ly = w * 0.25, d * 0.2
     cbx = x + lx * math.cos(rot) - ly * math.sin(rot)

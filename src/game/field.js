@@ -3,11 +3,21 @@ import { Humanoid, Monster, angDiff } from '../actors/actor.js';
 import { MONSTERS } from './data.js';
 import { AREAS } from '../world/world.js';
 
-const NPC_MODELS = {
-  King: 'King', Guard1: 'Guard', Guard2: 'Guard', Guard3: 'Guard', Guard4: 'Guard', Minister: 'Minister',
-  Innkeeper: 'Innkeeper', Merchant: 'Merchant', Elder: 'Elder', Girl: 'Girl', Villager1: 'Villager', Villager2: 'Villager',
-};
-const WANDER = new Set(['Girl', 'Villager1', 'Villager2', 'Minister']);
+// 屋外の NPC（フィールドのマーカー位置）
+const OUTDOOR = { Guard3: 'Guard', Guard4: 'Guard', Girl: 'Girl', Villager1: 'Villager', Villager2: 'Villager' };
+// 室内の NPC：id, モデル, フロア, 立ち位置の記号, その記号の何番目か, 向き, 歩き回るか, 話しかけられる距離
+const INDOOR = [
+  ['King', 'King', 'keep', 'K', 0, 0, false, 3.2],
+  ['Guard1', 'Guard', 'keep', 'G', 0, 0, false, 3.0],
+  ['Guard2', 'Guard', 'keep', 'G', 1, 0, false, 3.0],
+  ['Minister', 'Minister', 'keep', 'M', 0, -Math.PI / 2, true, 3.0],
+  ['Innkeeper', 'Innkeeper', 'inn', 'I', 0, Math.PI / 2, false, 4.6],
+  ['Merchant', 'Merchant', 'shop', 'V', 0, Math.PI / 2, false, 4.6],
+  ['Elder', 'Elder', 'house4', 'L', 0, 0, false, 3.0],
+  ['Resident1', 'Villager', 'house1', 'Z', 0, 0, true, 3.0],
+  ['Resident2', 'Girl', 'house3', 'Z', 0, 0, true, 3.0],
+];
+const WANDER = new Set(['Girl', 'Villager1', 'Villager2']);
 
 /**
  * 勇者の操作・カメラ・NPC・徘徊モンスター・話しかけ。
@@ -35,20 +45,29 @@ export class Field {
 
     // NPC
     this.npcs = [];
-    for (const [mk, model] of Object.entries(NPC_MODELS)) {
-      const m = world.marker(mk);
-      if (!m || !world.lib.has(model)) continue;
+    const addNpc = (id, model, env, pos, rot, wander, range) => {
+      if (!world.lib.has(model)) return;
       const h = new Humanoid(world.lib, model);
-      h.root.position.copy(m.pos);
-      h.root.rotation.y = m.rot;
+      h.root.position.copy(pos);
+      h.root.rotation.y = rot;
+      h.root.visible = env === 'field';
       scene.add(h.root);
-      this.npcs.push({ id: mk, h, home: m.pos.clone(), pos: m.pos.clone(), rot: m.rot, baseRot: m.rot, wander: WANDER.has(mk), target: null, wait: Math.random() * 4, talking: false });
+      this.npcs.push({ id, h, env, home: pos.clone(), pos: pos.clone(), rot, baseRot: rot, wander, range, target: null, wait: Math.random() * 4, talking: false });
+    };
+    for (const [mk, model] of Object.entries(OUTDOOR)) {
+      const m = world.marker(mk);
+      if (m) addNpc(mk, model, 'field', m.pos, m.rot, WANDER.has(mk), 3.0);
+    }
+    for (const [id, model, fl, spot, idx, rot, wander, range] of INDOOR) {
+      const floor = world.interiors.floors[fl];
+      const sp = floor && floor.spots[spot] && floor.spots[spot][idx];
+      if (sp) addNpc(id, model, fl, new THREE.Vector3(sp[0], 0, sp[1]), rot, wander, range);
     }
     this.signs = ['Sign1', 'Sign2', 'Sign3', 'Sign4'].map((id) => world.marker(id) && { id, pos: world.marker(id).pos }).filter(Boolean);
-    this.doors = [
-      { id: 'cave', m: world.marker('CaveEntrance') },
-      { id: 'tower', m: world.marker('TowerDoor') },
-    ].filter((d) => d.m);
+    // 建物・洞窟・塔の入口（室内データの door マーカーから）
+    this.doors = Object.values(world.interiors.floors)
+      .filter((f) => f.door && world.marker(f.door))
+      .map((f) => ({ id: f.id, m: world.marker(f.door) }));
 
     // 魔竜（まおうの塔 3F）・がんせきの番人（洞窟 B2）
     this.boss = new Monster(world.lib, MONSTERS.dragon);
@@ -76,8 +95,7 @@ export class Field {
   setEnv(env) {
     this.env = env;
     this.clearMonsters();
-    const field = env.kind === 'field';
-    for (const n of this.npcs) n.h.root.visible = field;
+    for (const n of this.npcs) n.h.root.visible = n.env === env.id;
     this.placeBosses();
   }
 
@@ -117,7 +135,7 @@ export class Field {
 
   setVisible(v) {
     this.visibleAll = v;
-    for (const n of this.npcs) n.h.root.visible = v && this.inField;
+    for (const n of this.npcs) n.h.root.visible = v && n.env === this.env.id;
     for (const m of this.mons) m.root.visible = v;
     if (v) this.placeBosses();
     else { this.boss.root.visible = this.guardian.root.visible = false; }
@@ -154,7 +172,7 @@ export class Field {
     const next = this.pos.clone().addScaledVector(this.vel, dt);
     if (env.walkable(next.x, next.z, this.pos.y)) {
       env.colliders.resolve(next, 0.42);
-      if (this.inField) for (const n of this.npcs) this.pushOut(next, n.pos, 0.85);
+      for (const n of this.npcs) if (n.env === env.id) this.pushOut(next, n.pos, 0.85);
       if (this.boss.root.visible) this.pushOut(next, this.boss.root.position, 4.0);
       if (this.guardian.root.visible) this.pushOut(next, this.guardian.root.position, 2.2);
       if (env.walkable(next.x, next.z, this.pos.y)) { this.pos.x = next.x; this.pos.z = next.z; }
@@ -188,7 +206,7 @@ export class Field {
     this.updateCamera(dt);
 
     // NPC・ボス
-    if (this.inField) for (const n of this.npcs) this.updateNpc(n, dt);
+    for (const n of this.npcs) if (n.env === env.id) this.updateNpc(n, dt);
     if (this.boss.root.visible) this.boss.update(dt);
     if (this.guardian.root.visible) this.guardian.update(dt);
 
@@ -224,8 +242,8 @@ export class Field {
     const tgt = this.pos.clone().add(new THREE.Vector3(0, 1.35, 0));
     c.target.lerp(tgt, snap ? 1 : Math.min(1, dt * 8));
     // ダンジョンでは壁越しに見下ろす角度・距離に制限
-    const pitch = this.inField ? c.pitch : Math.max(c.pitch, 0.95);
-    const dist = this.inField ? c.dist : Math.min(c.dist, 11);
+    const pitch = this.inField ? c.pitch : Math.max(c.pitch, this.env.indoor ? 1.05 : 0.95);
+    const dist = this.inField ? c.dist : this.env.indoor ? THREE.MathUtils.clamp(c.dist, 10, 13) : Math.min(c.dist, 11);
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
     const want = c.target.clone().add(new THREE.Vector3(Math.sin(c.yaw) * cp * dist, sp * dist + 0.4, Math.cos(c.yaw) * cp * dist));
     if (this.inField) {
@@ -234,7 +252,7 @@ export class Field {
       const full = dirv.length();
       dirv.divideScalar(full);
       let lim = full;
-      for (let k = 1; k <= 12; k++) {
+      for (let k = 1; k <= 12 && this.inField; k++) {
         const d = (k / 12) * full;
         const q = c.target.clone().addScaledVector(dirv, d);
         for (const t of env.colliders.near(q.x, q.z)) {
@@ -255,7 +273,7 @@ export class Field {
   }
 
   updateNpc(n, dt) {
-    const h = n.h, w = this.world;
+    const h = n.h, env = n.env === 'field' ? this.world.fieldEnv : this.env;
     let speed = 0;
     if (n.talking) {
       const want = Math.atan2(this.pos.x - n.pos.x, this.pos.z - n.pos.z);
@@ -271,14 +289,14 @@ export class Field {
           d.normalize();
           n.rot += angDiff(n.rot, Math.atan2(d.x, d.z)) * Math.min(1, dt * 5);
           const nx = n.pos.clone().addScaledVector(d, speed * dt);
-          if (w.colliders.resolve(nx, 0.4)) n.target = null;
-          if (nx.distanceTo(this.pos) > 1.0) n.pos.copy(nx);
-          n.pos.y = w.hf.height(n.pos.x, n.pos.z);
+          if (env.colliders.resolve(nx, 0.4) || !env.walkable(nx.x, nx.z, n.pos.y)) n.target = null;
+          else if (nx.distanceTo(this.pos) > 1.0) n.pos.copy(nx);
+          n.pos.y = env.height(n.pos.x, n.pos.z);
         }
       } else {
         n.wait -= dt;
         if (n.wait <= 0) {
-          const a = Math.random() * Math.PI * 2, r = 1 + Math.random() * 4;
+          const a = Math.random() * Math.PI * 2, r = n.env === 'field' ? 1 + Math.random() * 4 : 0.6 + Math.random() * 1.6;
           n.target = n.home.clone().add(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r));
         }
       }
@@ -290,7 +308,7 @@ export class Field {
     h.speed = speed;
     // 遠くの NPC は描かない・動かさない（スマホ向けの軽量化）
     const d2 = n.pos.distanceToSquared(this.camera.position);
-    h.root.visible = this.visibleAll !== false && this.inField && d2 < 95 * 95;
+    h.root.visible = this.visibleAll !== false && n.env === this.env.id && d2 < 95 * 95;
     if (d2 < 70 * 70) h.update(dt);
   }
 
@@ -307,11 +325,12 @@ export class Field {
       if (dist > 0.8 && d.normalize().dot(fwd) < 0.2) return;
       if (dist < bd) { bd = dist; best = { id, kind, obj, pos: p }; }
     };
+    for (const n of this.npcs) if (n.env === this.env.id) check(n.id, n.pos, n.range || 3.0, 'npc', n);
     if (this.inField) {
-      for (const n of this.npcs) check(n.id, n.pos, 3.0, 'npc', n);
       for (const s of this.signs) check(s.id, s.pos, 2.4, 'sign');
     } else {
       const env = this.env;
+      for (const p of env.pots) if (!(fl.pots && fl.pots[p.id])) check(p.id, p.pos, 1.9, 'pot', p);
       for (const c of env.chests) if (!(fl.chests && fl.chests[c.id])) check(c.id, c.pos, 2.4, 'chest', c);
       if (env.orb && env.orb.visible) check('orb', env.orb.getWorldPosition(new THREE.Vector3()).setY(0), 2.8, 'orb');
       if (this.guardian.root.visible) check('guardian', this.guardian.root.position, 5.5, 'guardian');
@@ -323,11 +342,11 @@ export class Field {
   updateHint() {
     const it = this.g.ui.busy ? null : this.findInteract();
     if (!it) { this.hint.classList.add('hidden'); return; }
-    const hy = { sign: 2.4, boss: 6, guardian: 4.2, chest: 1.6, orb: 2.4 }[it.kind] || 2.2;
+    const hy = { sign: 2.4, boss: 6, guardian: 4.2, chest: 1.6, orb: 2.4, pot: 1.4 }[it.kind] || 2.2;
     const p = it.pos.clone().add(new THREE.Vector3(0, hy, 0)).project(this.camera);
     if (p.z > 1) { this.hint.classList.add('hidden'); return; }
     this.hint.classList.remove('hidden');
-    this.hint.textContent = { sign: 'しらべる', boss: 'たちむかう', guardian: 'たちむかう', chest: 'あける', orb: 'しらべる' }[it.kind] || 'はなす';
+    this.hint.textContent = { sign: 'しらべる', boss: 'たちむかう', guardian: 'たちむかう', chest: 'あける', orb: 'しらべる', pot: 'しらべる' }[it.kind] || 'はなす';
     this.hint.style.left = ((p.x + 1) / 2) * window.innerWidth + 'px';
     this.hint.style.top = ((1 - p.y) / 2) * window.innerHeight + 'px';
   }

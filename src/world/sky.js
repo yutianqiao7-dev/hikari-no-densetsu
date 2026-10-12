@@ -30,7 +30,7 @@ export class SkySystem {
     u.turbidity.value = 3.2;
     u.rayleigh.value = 1.4;
     u.mieCoefficient.value = 0.004;
-    u.mieDirectionalG.value = 0.82;
+    u.mieDirectionalG.value = 0.72;
     u.cloudCoverage.value = 0.42;
     u.cloudDensity.value = 0.55;
     u.cloudScale.value = 0.00022;
@@ -41,12 +41,17 @@ export class SkySystem {
       uSkyGain: { value: 1.0 }, uTime: { value: 0 },
     });
     sky.material.fragmentShader = sky.material.fragmentShader
+      // 太陽の円盤を見上げても目がくらまない明るさに
+      .replace('( 760.0 * sundisc )', '( 26.0 * sundisc )')
       .replace('void main() {', /* glsl */`
         uniform float uNight; uniform vec3 uFogColor; uniform vec3 uMoonDir; uniform float uSkyGain; uniform float uTime;
         float hash3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
         void main() {`)
       .replace('gl_FragColor = vec4( texColor, 1.0 );', /* glsl */`
         texColor *= uSkyGain;
+        // 太陽の周りのまぶしさに上限（ブルームで画面が白飛びしないように）
+        float lum = dot(texColor, vec3(0.2126, 0.7152, 0.0722));
+        texColor *= min(1.0, 2.4 / max(lum, 1e-4));
         vec3 nightCol = mix(vec3(0.012, 0.02, 0.05), vec3(0.002, 0.004, 0.016), smoothstep(0.0, 0.7, direction.y));
         texColor += nightCol * uNight;
         if (direction.y > 0.0) {
