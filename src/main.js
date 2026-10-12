@@ -157,7 +157,9 @@ class Game {
     if (this.world.interiors.current) this.applyInteriorLighting();
     CUT.uCutOn.value = this.world.interiors.current ? 1 : 0;
     CUT.uCutCam.value.copy(this.camera.position);
-    CUT.uCutTarget.value.copy(f.pos).y += 1.0;
+    // 戦闘中はカメラが見ている所（戦いの中心）までの壁を透かす
+    if (this.battle && this.battle.camLook) CUT.uCutTarget.value.copy(this.battle.camLook);
+    else CUT.uCutTarget.value.copy(f.pos).y += 1.0;
     this.world.update(dt, this.t, this.camera.position, f.pos);
     this.fx.update(dt);
     this.ambient(dt);

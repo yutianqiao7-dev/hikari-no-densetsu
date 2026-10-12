@@ -103,6 +103,13 @@ export class Vegetation {
     this.lastPos = new THREE.Vector3(1e9, 0, 0);
     this.lastDir = new THREE.Vector3();
     this.dir = new THREE.Vector3();
+    this.exclude = null;
+  }
+
+  /** 戦闘中など、指定した円の中の木・岩を描かない（null で解除） */
+  setExclude(center, radius) {
+    this.exclude = center ? { x: center.x, z: center.z, r2: radius * radius } : null;
+    this.lastPos.set(1e9, 0, 0);
   }
 
   fill(list, idx, k) {
@@ -132,6 +139,8 @@ export class Vegetation {
         const dx = p.x - camPos.x, dz = p.z - camPos.z;
         const d2 = dx * dx + dz * dz;
         if (d2 > far2) continue;
+        const ex = this.exclude;
+        if (ex && (p.x - ex.x) ** 2 + (p.z - ex.z) ** 2 < ex.r2) continue;
         const d = Math.sqrt(d2);
         // 視界の外（背後）は描かない。近くの木は影のために残す
         if (d > 30 && (dx * dir.x + dz * dir.z) / d < cosLimit) continue;

@@ -109,6 +109,73 @@ export class Battle {
     for (const a of this.allies) a.h.root.visible = true;
     if (boss) this.bossObj.root.visible = true;
     this.center = this.enemies.reduce((a, e) => a.add(e.home), V()).multiplyScalar(1 / this.enemies.length);
+    // 戦いの場の周りの木・岩を消して、カメラの邪魔にならないように
+    const mid = this.center.clone().lerp(this.center0, 0.5);
+    const rad = this.center.distanceTo(this.center0) * 0.5 + (boss === 'dragon' ? 22 : 15);
+    this.g.world.veg.setExclude(mid, rad);
+    this.fitCam = this.g.camera.clone();
+  }
+
+  /** 敵（と味方）の高さを含む注目点 */
+  focusPoints(withAllies, actor) {
+    const pts = [];
+    for (const e of this.alive.length ? this.alive : this.enemies) {
+      const h = e.key === 'dragon' ? 6.2 : (e.m.kind === 'Bat' || e.m.kind === 'Ghost' ? 2.2 : 1.9) * (e.def.scale || 1);
+      const r = e.key === 'dragon' ? 3.2 : 0.7 * (e.def.scale || 1);
+      pts.push(e.home.clone().addScaledVector(this.right, r), e.home.clone().addScaledVector(this.right, -r), e.home.clone().add(V(0, h, 0)), e.home.clone());
+    }
+    const allies = withAllies ? this.allies : actor ? [actor] : [];
+    for (const a of allies) pts.push(a.home.clone(), a.home.clone().add(V(0, 2.0, 0)));
+    return pts;
+  }
+
+  /** すべての注目点が画面の内側（上は敵名ウィンドウ、下はコマンド欄を避ける）に入るまでカメラを引く */
+  fit(shot, pts) {
+    const cam = this.fitCam;
+    const src = this.g.camera;
+    cam.fov = src.fov;
+    cam.aspect = src.aspect;
+    cam.updateProjectionMatrix();
+    const dirv = shot.pos.clone().sub(shot.look);
+    let dist = dirv.length();
+    dirv.normalize();
+    const v = V();
+    for (let k = 0; k < 24; k++) {
+      cam.position.copy(shot.look).addScaledVector(dirv, dist);
+      cam.lookAt(shot.look);
+      cam.updateMatrixWorld();
+      let ok = true;
+      for (const p of pts) {
+        v.copy(p).project(cam);
+        if (v.z > 1 || Math.abs(v.x) > 0.84 || v.y > 0.7 || v.y < -0.62) { ok = false; break; }
+      }
+      if (ok) break;
+      dist *= 1.1;
+    }
+    shot.pos.copy(shot.look).addScaledVector(dirv, dist);
+    return shot;
+  }
+
+  /** 手前の味方の頭が敵に重なるなら、頭越しに見えるまでカメラを上げる */
+  overHeads(shot) {
+    const cam = this.fitCam, v = V(), w = V();
+    for (let k = 0; k < 10; k++) {
+      cam.position.copy(shot.pos);
+      cam.lookAt(shot.look);
+      cam.updateMatrixWorld();
+      let hit = false;
+      for (const e of this.alive) {
+        v.copy(e.home).add(V(0, e.key === 'dragon' ? 2.5 : 0.6, 0)).project(cam);
+        for (const a of this.allies) {
+          w.copy(a.home).add(V(0, 2.1, 0)).project(cam);
+          if (w.z < v.z && w.y > v.y && Math.abs(w.x - v.x) < 0.16) { hit = true; break; }
+        }
+        if (hit) break;
+      }
+      if (!hit) break;
+      shot.pos.y += 0.45;
+    }
+    return shot;
   }
 
   makeEnemy(key, m, pos) {
@@ -128,7 +195,7 @@ export class Battle {
       intro: () => ({ pos: c.clone().addScaledVector(d, 6).addScaledVector(r, -9).add(V(0, big ? 7 : 4, 0)), look: c.clone().add(V(0, big ? 3 : 0.8, 0)), speed: 1.2 }),
       command: () => {
         const a = arg ? arg.home : h0;
-        return { pos: a.clone().addScaledVector(d, big ? -4.6 : -3.4).addScaledVector(r, big ? 2.0 : 1.3).add(V(0, big ? 2.4 : 1.8, 0)), look: a.clone().lerp(c, 0.62).add(V(0, big ? 3.0 : 0.85, 0)), speed: 3 };
+        return { pos: a.clone().addScaledVector(d, big ? -5.0 : -3.9).addScaledVector(r, big ? 2.0 : 1.3).add(V(0, big ? 3.6 : 3.0, 0)), look: a.clone().lerp(c, 0.66).add(V(0, big ? 2.6 : 0.6, 0)), speed: 3 };
       },
       side: () => ({ pos: h0.clone().lerp(c, 0.5).addScaledVector(r, big ? -13 : -8.5).add(V(0, 2.6, 0)), look: h0.clone().lerp(c, 0.5).add(V(0, 1.0, 0)), speed: 4 }),
       actorFront: () => ({ pos: arg.home.clone().addScaledVector(d, 3.4).addScaledVector(r, -1.2).add(V(0, 1.6, 0)), look: arg.home.clone().add(V(0, 1.2, 0)), speed: 4 }),
@@ -137,7 +204,12 @@ export class Battle {
       victory: () => ({ pos: h0.clone().addScaledVector(d, 4.2).addScaledVector(r, 1.4).add(V(0, 1.7, 0)), look: h0.clone().add(V(0, 1.2, 0)), speed: 2, orbit: true }),
       wide: () => ({ pos: c.clone().lerp(h0, 0.5).addScaledVector(r, -11).add(V(0, 6, 0)), look: c.clone().lerp(h0, 0.5).add(V(0, 1, 0)), speed: 2 }),
     };
-    this.shot = S[name]();
+    const shot = S[name]();
+    // 敵が見切れないように自動で引く
+    if (name === 'command') { this.fit(shot, this.focusPoints(false, arg)); this.overHeads(shot); }
+    else if (name === 'enemy') this.fit(shot, this.focusPoints(false));
+    else if (name === 'intro' || name === 'side' || name === 'wide') this.fit(shot, this.focusPoints(true));
+    this.shot = shot;
   }
 
   updateCamera(dt) {
@@ -818,6 +890,7 @@ export class Battle {
     if (this.opts.boss && result === 'win') this.bossObj.root.visible = false;
     for (const a of this.allies) { if (a.m.hp > 0) a.h.stopOneShot(); a.h.speed = 0; }
     this.allies[0].h.setWeapon(false);
+    this.g.world.veg.setExclude(null);
     this.f.setVisible(true);
     this.f.resetFollowers();
     this.g.renderer.grade.uniforms.uDesat.value = 0;

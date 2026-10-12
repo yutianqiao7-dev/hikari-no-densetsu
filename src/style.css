@@ -150,7 +150,7 @@ html, body {
 }
 
 /* ---------------------------------------------------------- 戦闘 */
-#battle-enemies { top: calc(10px + var(--sat)); left: 50%; transform: translateX(-50%); min-width: 11em; text-align: center; font-size: .9em; }
+#battle-enemies { bottom: calc(14px + var(--sab)); right: calc(12px + var(--sar)); min-width: 8em; text-align: center; font-size: .9em; }
 #battle-cmd { left: calc(12px + var(--sal)); bottom: calc(14px + var(--sab)); min-width: 9.5em; }
 #battle-sub { left: calc(12em + var(--sal)); bottom: calc(14px + var(--sab)); min-width: 11em; max-height: 60vh; overflow-y: auto; }
 .dmg {
@@ -235,6 +235,7 @@ html, body {
 }
 @media (orientation: portrait) and (max-width: 700px) {
   #rotate-hint.enabled { display: flex; }
+  #battle-enemies { right: auto; left: calc(12px + var(--sal)); bottom: calc(14px + var(--sab) + 13.5em); font-size: .8em; }
 }
 @media (max-width: 760px) {
   #hud-party .member { min-width: 5.4em; font-size: .68em; padding: .2em .45em; }
