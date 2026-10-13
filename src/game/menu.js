@@ -2,9 +2,9 @@ import { SPELLS, ITEMS, EQUIP, SHOP, MEMBERS, expForLevel, MAX_LV } from './data
 import { derived, knownSpells, save, memberName, healAll } from './state.js';
 import { QUALITY, saveQualityKey, loadQualityKey } from '../core/renderer.js';
 
-const R = 'calc(14px + var(--sar))';
-const T = 'calc(170px + var(--sat))';
-const R2 = 'calc(10em + var(--sar))';
+const R = 'calc(14px + var(--sar) + var(--btnw))';
+const T = 'calc(min(170px, 36vh) + var(--sat))';
+const R2 = 'calc(10em + var(--sar) + var(--btnw))';
 const rint = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
 
 /** パーティから 1 人選ぶ（filter で選べない人を灰色に） */
@@ -43,7 +43,7 @@ async function spellMenu(g) {
   if (!caster) return;
   const list = knownSpells(caster).filter((k) => SPELLS[k].field);
   const j = await ui.choose(list.map((k) => ({ label: SPELLS[k].name, sub: SPELLS[k].mp, disabled: caster.mp < SPELLS[k].mp, desc: SPELLS[k].desc })),
-    { right: 'calc(20em + var(--sar))', top: T, title: `MP ${caster.mp}` });
+    { right: 'calc(20em + var(--sar) + var(--btnw))', top: T, title: `MP ${caster.mp}` });
   if (j < 0) return;
   const k = list[j], sp = SPELLS[k];
   const cname = memberName(s, caster);
@@ -57,7 +57,7 @@ async function spellMenu(g) {
     return;
   }
   const dead = sp.target === 'dead';
-  const t = await pickMember(g, 'だれに？', (m) => (dead ? m.hp <= 0 : m.hp > 0), undefined, { right: 'calc(20em + var(--sar))' });
+  const t = await pickMember(g, 'だれに？', (m) => (dead ? m.hp <= 0 : m.hp > 0), undefined, { right: 'calc(20em + var(--sar) + var(--btnw))' });
   if (!t) return;
   caster.mp -= sp.mp;
   g.audio.sfx(dead ? 'light' : 'heal');
@@ -82,7 +82,7 @@ async function itemMenu(g) {
     await g.warpToCastle();
     return;
   }
-  const t = await pickMember(g, 'だれに？', (m) => m.hp > 0, it.use === 'mp' ? (m) => `M ${m.mp}` : undefined, { right: 'calc(20em + var(--sar))' });
+  const t = await pickMember(g, 'だれに？', (m) => m.hp > 0, it.use === 'mp' ? (m) => `M ${m.mp}` : undefined, { right: 'calc(20em + var(--sar) + var(--btnw))' });
   if (!t) return;
   s.items[k]--;
   const d = derived(t);
@@ -108,14 +108,14 @@ async function equipMenu(g) {
   let last = 0;
   for (;;) {
     const i = await ui.choose(slots.map(([k, n]) => ({ label: n, sub: EQUIP[who.equip[k]] ? EQUIP[who.equip[k]].name : 'なし' })),
-      { right: 'calc(20em + var(--sar))', top: T, title: memberName(s, who), start: last });
+      { right: 'calc(20em + var(--sar) + var(--btnw))', top: T, title: memberName(s, who), start: last });
     if (i < 0) return;
     last = i;
     const slot = slots[i][0];
     const options = [who.equip[slot], ...s.bag.filter((k) => EQUIP[k].slot === slot)].filter(Boolean);
     if (!options.length) { await ui.say('そうび できるものが ない。'); continue; }
     const j = await ui.choose(options.map((k) => ({ label: (k === who.equip[slot] ? 'E ' : '　') + EQUIP[k].name, sub: EQUIP[k].atk ? `こうげき+${EQUIP[k].atk}` : `しゅび+${EQUIP[k].def}` })),
-      { right: 'calc(20em + var(--sar))', top: 'calc(330px + var(--sat))', title: slots[i][1] });
+      { right: 'calc(20em + var(--sar) + var(--btnw))', top: 'calc(min(330px, 52vh) + var(--sat))', title: slots[i][1] });
     if (j < 0) continue;
     const k = options[j];
     if (k === who.equip[slot]) {
@@ -137,7 +137,7 @@ async function orderMenu(g) {
   const s = g.state;
   const a = await pickMember(g, 'だれと？', (m) => m.id !== 'hero', (m) => MEMBERS[m.id].role);
   if (!a) return;
-  const b = await pickMember(g, 'いれかえる', (m) => m.id !== 'hero' && m !== a, (m) => MEMBERS[m.id].role, { right: 'calc(20em + var(--sar))' });
+  const b = await pickMember(g, 'いれかえる', (m) => m.id !== 'hero' && m !== a, (m) => MEMBERS[m.id].role, { right: 'calc(20em + var(--sar) + var(--btnw))' });
   if (!b) return;
   const ia = s.party.indexOf(a), ib = s.party.indexOf(b);
   s.party[ia] = b; s.party[ib] = a;
@@ -183,7 +183,7 @@ async function settingsMenu(g) {
     if (i < 0 || i === 3) return;
     if (i === 0) {
       const keys = Object.keys(QUALITY);
-      const j = await ui.choose(keys.map((k) => ({ label: QUALITY[k].label, sub: k === qk ? '●' : '' })), { right: 'calc(20em + var(--sar))', top: T, title: 'がしつ' });
+      const j = await ui.choose(keys.map((k) => ({ label: QUALITY[k].label, sub: k === qk ? '●' : '' })), { right: 'calc(20em + var(--sar) + var(--btnw))', top: T, title: 'がしつ' });
       if (j >= 0 && keys[j] !== qk) {
         saveQualityKey(keys[j]);
         save(g.snapshot());
@@ -236,7 +236,7 @@ export async function shop(g) {
           const it = ITEMS[k] || EQUIP[k];
           return { label: it.name, sub: `${it.price}G`, desc: ITEMS[k] ? it.desc : EQUIP[k].atk ? `こうげき力 +${EQUIP[k].atk}` : `しゅび力 +${EQUIP[k].def}` };
         });
-        const j = await ui.choose(items, { right: 'calc(8em + var(--sar))', top: 'calc(60px + var(--sat))', title: `${s.gold} G` });
+        const j = await ui.choose(items, { right: 'calc(8em + var(--sar) + var(--btnw))', top: 'calc(min(60px, 12vh) + var(--sat))', title: `${s.gold} G` });
         if (j < 0) break;
         const k = SHOP[j];
         const it = ITEMS[k] || EQUIP[k];
@@ -264,7 +264,7 @@ export async function shop(g) {
       const list = [...Object.entries(s.items).filter(([, n]) => n > 0).map(([k]) => k), ...s.bag];
       if (!list.length) { await ui.say({ who: 'しょうにん', text: 'うれる ものが ないみたいだね。' }); continue; }
       const j = await ui.choose(list.map((k) => { const it = ITEMS[k] || EQUIP[k]; return { label: it.name, sub: `${Math.floor(it.price / 2)}G` }; }),
-        { right: 'calc(8em + var(--sar))', top: 'calc(60px + var(--sat))', title: 'うる' });
+        { right: 'calc(8em + var(--sar) + var(--btnw))', top: 'calc(min(60px, 12vh) + var(--sat))', title: 'うる' });
       if (j < 0) continue;
       const k = list[j];
       const it = ITEMS[k] || EQUIP[k];

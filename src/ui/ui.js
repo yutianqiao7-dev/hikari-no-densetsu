@@ -152,7 +152,7 @@ export class UI {
   }
 
   yesno(opts = {}) {
-    return this.choose([{ label: 'はい' }, { label: 'いいえ' }], { right: 'calc(14px + var(--sar))', bottom: 'calc(7.6em + var(--sab))', ...opts })
+    return this.choose([{ label: 'はい' }, { label: 'いいえ' }], { right: 'calc(14px + var(--sar) + var(--btnw))', bottom: 'calc(7.6em + var(--sab))', ...opts })
       .then((i) => i === 0);
   }
 

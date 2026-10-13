@@ -69,7 +69,12 @@ export class Input {
     window.addEventListener('blur', () => this.keys.clear());
   }
 
-  setTouchVisible(v) { this.touchEl.style.display = v && this.touchAllowed ? '' : 'none'; }
+  setTouchVisible(v) {
+    const on = v && this.touchAllowed;
+    this.touchEl.style.display = on ? '' : 'none';
+    // ボタンが出ているあいだは、文字のウィンドウをボタンの列にかぶらない位置へ
+    document.body.classList.toggle('touch-on', !!on);
+  }
   allowTouch(v) { this.touchAllowed = v; this.setTouchVisible(v && this.isTouch); }
 
   emit(k, soft) { if (this.enabled) this.onKey(k, soft); }

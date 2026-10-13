@@ -3,6 +3,7 @@
   --win-border: #ffffff;
   --gold: #f6d77a;
   --fs: clamp(15px, 1.2vw + 10px, 22px);
+  --btnw: 0px;
   --sat: env(safe-area-inset-top, 0px);
   --sar: env(safe-area-inset-right, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
@@ -243,4 +244,22 @@ html, body {
   #minimap { width: 96px; height: 96px; }
   #clock { top: calc(110px + var(--sat)); width: 92px; font-size: 11px; }
   #battle-sub { left: calc(10em + var(--sal)); }
+}
+
+/* ---------------------------------------------------------- タッチボタンと文字が重ならないように */
+body.touch-on { --btnw: 184px; }
+body.touch-on #msg { left: calc(12px + var(--sal)); right: calc(var(--btnw) + var(--sar)); width: auto; max-width: 860px; transform: none; }
+body.touch-on #battle-enemies { right: calc(var(--btnw) + var(--sar)); }
+@media (orientation: portrait) and (max-width: 700px) {
+  body.touch-on #msg { right: calc(12px + var(--sar)); bottom: calc(210px + var(--sab)); }
+  body.touch-on #battle-sub { left: calc(12px + var(--sal)); bottom: calc(14px + var(--sab) + 12.5em); }
+  body.touch-on #battle-enemies { right: auto; }
+  body.touch-on { --btnw: 0px; }
+  body.touch-on .win.menu { max-height: calc(100vh - 230px - var(--sat)); overflow-y: auto; }
+}
+/* 横向きのスマホなど、高さが低い画面では文字を少し小さく */
+@media (max-height: 430px) {
+  :root { --fs: 13px; }
+  .menu .item { padding-top: .04em; padding-bottom: .04em; }
+  #msg { min-height: 4.6em; }
 }
