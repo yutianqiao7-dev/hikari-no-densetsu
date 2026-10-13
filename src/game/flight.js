@@ -9,7 +9,7 @@ const DRAGON_SCALE = 1.35;
 const CRUISE = 42;          // 海の上を飛ぶ高さ
 const WORLD_R = 2100;       // これより遠くへは行けない（海の果て）
 // 鞍の上の座席（竜のローカル座標・拡大前）。前から順に
-const SEATS = [V(0, 3.38, 0.95), V(0, 3.42, 0.38), V(0, 3.38, -0.2), V(0, 3.28, -0.78)];
+const SEATS = [V(0, 4.0, 0.6), V(0, 3.68, 0.1), V(0, 3.47, -0.4), V(0, 3.3, -0.85)];
 
 /**
  * 竜ヴァルザードに乗って海の上を飛ぶ。
@@ -31,6 +31,29 @@ export class Flight {
     this.hint.className = 'flight-hint hidden';
     g.ui.root.appendChild(this.hint);
     this.landing = null;
+  }
+
+  /** 闇の島の結界（ほうじゅが三つそろうまで）：紫に揺らめく半球 */
+  ensureBarrier() {
+    if (this.barrier) return this.barrier;
+    const geo = new THREE.SphereGeometry(255, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2);
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+      uniforms: { uTime: { value: 0 } },
+      vertexShader: `varying vec3 vN; varying vec3 vW; void main(){ vN = normalize(mat3(modelMatrix) * normal); vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: `uniform float uTime; varying vec3 vN; varying vec3 vW;
+        void main(){ vec3 V = normalize(cameraPosition - vW); float f = pow(1.0 - abs(dot(V, vN)), 2.2);
+          float bands = 0.5 + 0.5 * sin(vW.y * 0.25 - uTime * 1.5 + sin(vW.x * 0.05 + uTime) * 2.0);
+          gl_FragColor = vec4(vec3(0.55, 0.2, 0.95) * (0.25 + f * 1.2) * (0.6 + bands * 0.5), 1.0); }`,
+    });
+    const m = new THREE.Mesh(geo, mat);
+    const [ox, oz] = ISLANDS.dark.offset;
+    m.position.set(ox, -5, oz);
+    m.renderOrder = 6;
+    m.visible = false;
+    this.g.scene.add(m);
+    this.barrier = m;
+    return m;
   }
 
   ensureDragon() {
@@ -121,7 +144,7 @@ export class Flight {
     this.riders().forEach((h, i) => {
       const seat = d.root.localToWorld(SEATS[i].clone());
       h.root.quaternion.copy(q);
-      h.root.position.copy(seat).add(V(0, -0.92, 0).applyQuaternion(q));
+      h.root.position.copy(seat).add(V(0, -0.95, 0).applyQuaternion(q));
       h.update(dt || 0.016);
     });
     // カメラ：竜の後ろ上から
@@ -207,6 +230,9 @@ export class Flight {
     const near = isl ? isl.map.isl.name : null;
     if (near !== this.lastIsl) { this.lastIsl = near; if (near) g.ui.showBanner(near); }
     g.sky.update(dt, this.pos, g.camera);
+    const bm = this.ensureBarrier();
+    bm.visible = !g.state.flags.darkOpen;
+    bm.material.uniforms.uTime.value += dt;
   }
 
   /** 闇の島の結界：はじき返される */
@@ -288,6 +314,7 @@ export class Flight {
     this.active = false;
     this.landing = null;
     this.hint.classList.add('hidden');
+    if (this.barrier) this.barrier.visible = false;
     for (const h of this.riders()) h.stopOneShot(0.01);
     w.useMap(map.id);
     g.hud.buildBaseMap(w);

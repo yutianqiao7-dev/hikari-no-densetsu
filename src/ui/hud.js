@@ -80,10 +80,11 @@ export class HUD {
     const c = document.createElement('canvas');
     c.width = floor.W * px; c.height = floor.H * px;
     const g = c.getContext('2d');
-    const col = { '#': floor.style === 'cave' ? '#2a2420' : '#241c2c', W: '#1d4a6a', P: '#6a6070', T: '#e08a30', S: '#fff0b0', U: '#9fd0ff', D: '#9fd0ff', C: '#e8c040', B: '#c040ff', O: '#ffe070' };
+    const rockyS = ['cave', 'icecave', 'lava'].includes(floor.style);
+    const col = { '#': { icecave: '#203448', lava: '#1a1210', pyramid: '#3a2c1a' }[floor.style] || (rockyS ? '#2a2420' : '#241c2c'), W: floor.style === 'lava' ? '#d04010' : floor.style === 'icecave' ? '#8ad0ff' : '#1d4a6a', P: '#6a6070', T: '#e08a30', S: '#fff0b0', U: '#9fd0ff', D: '#9fd0ff', C: '#e8c040', B: '#c040ff', O: '#ffe070' };
     for (let j = 0; j < floor.H; j++) for (let i = 0; i < floor.W; i++) {
       const ch = floor.grid[j][i];
-      g.fillStyle = col[ch] || (floor.style === 'cave' ? '#7a6a58' : '#8a8090');
+      g.fillStyle = col[ch] || ({ icecave: '#a8c8e0', lava: '#5a4a44', pyramid: '#b89a70' }[floor.style] || (rockyS ? '#7a6a58' : '#8a8090'));
       g.fillRect(i * px, j * px, px, px);
     }
     this.mapEnv = { img: c, ox: floor.ox, oz: floor.oz, scale: floor.cell / px, floor };

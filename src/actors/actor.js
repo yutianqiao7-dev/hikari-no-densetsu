@@ -237,6 +237,132 @@ export class Monster {
         }
         break;
       }
+      case 'Scorpion': {
+        const s = Math.sin(t * 7);
+        b.position.y += Math.abs(s) * 0.015;
+        if (P.LegsL) P.LegsL.rotation.x = rest(P.LegsL).r.x + s * 0.15;
+        if (P.LegsR) P.LegsR.rotation.x = rest(P.LegsR).r.x - s * 0.15;
+        if (P.Tail) {
+          P.Tail.rotation.x = rest(P.Tail).r.x + Math.sin(t * 1.7) * 0.08 + this.lunge * 0.7;
+          P.Tail.rotation.z = rest(P.Tail).r.z + Math.sin(t * 1.1) * 0.1;
+        }
+        const raise = 0.1 + 0.08 * Math.sin(t * 2.3) + this.lunge * 0.4;
+        if (P.ClawL) P.ClawL.rotation.x = rest(P.ClawL).r.x - raise;
+        if (P.ClawR) P.ClawR.rotation.x = rest(P.ClawR).r.x - raise;
+        if (P.PincerL) P.PincerL.rotation.x = rest(P.PincerL).r.x - Math.max(0, Math.sin(t * 3)) * 0.45;
+        if (P.PincerR) P.PincerR.rotation.x = rest(P.PincerR).r.x - Math.max(0, Math.sin(t * 3 + 1.4)) * 0.45;
+        break;
+      }
+      case 'Mummy':
+      case 'Anubis':
+      case 'DarkKnight': {
+        const slow = this.kind === 'Mummy' ? 2.4 : this.kind === 'Anubis' ? 3.0 : 3.6;
+        const amp = Math.min(0.45, (this.kind === 'Mummy' ? 0.1 : 0.12) + this.speed * 0.06);
+        const s = Math.sin(t * slow);
+        b.position.y += Math.abs(Math.cos(t * slow)) * 0.025;
+        b.rotation.z = Math.sin(t * slow * 0.5) * (this.kind === 'Mummy' ? 0.06 : 0.025);
+        if (P.LegL) P.LegL.rotation.x = rest(P.LegL).r.x + s * amp;
+        if (P.LegR) P.LegR.rotation.x = rest(P.LegR).r.x - s * amp;
+        if (this.kind === 'Mummy') {
+          if (P.ArmL) P.ArmL.rotation.x = rest(P.ArmL).r.x + Math.sin(t * 1.3) * 0.08 - this.lunge * 0.4;
+          if (P.ArmR) P.ArmR.rotation.x = rest(P.ArmR).r.x + Math.sin(t * 1.3 + 1) * 0.08 - this.lunge * 0.4;
+          if (P.Head) P.Head.rotation.z = rest(P.Head).r.z + Math.sin(t * 0.8) * 0.15;
+        } else {
+          if (P.ArmL) P.ArmL.rotation.x = rest(P.ArmL).r.x - s * amp * 0.5;
+          if (P.ArmR) P.ArmR.rotation.x = rest(P.ArmR).r.x + s * amp * 0.5 - this.lunge * 1.2;
+          if (P.Head) P.Head.rotation.y = rest(P.Head).r.y + Math.sin(t * 0.7) * 0.18;
+          if (P.Cape) P.Cape.rotation.x = rest(P.Cape).r.x + 0.08 + Math.sin(t * 1.6) * 0.06 + this.speed * 0.04;
+        }
+        break;
+      }
+      case 'Cactus':
+      case 'Snowman': {
+        const f = this.kind === 'Cactus' ? 3.4 : 2.6;
+        const s = Math.sin(t * f);
+        b.position.y += Math.abs(s) * (this.kind === 'Cactus' ? 0.12 : 0.06);
+        b.rotation.z = s * 0.07;
+        if (P.ArmL) P.ArmL.rotation.z = rest(P.ArmL).r.z + Math.sin(t * f) * 0.25 - this.lunge * 0.5;
+        if (P.ArmR) P.ArmR.rotation.z = rest(P.ArmR).r.z - Math.sin(t * f + 0.7) * 0.25 + this.lunge * 0.5;
+        if (P.Head) P.Head.rotation.z = rest(P.Head).r.z + Math.sin(t * 1.3) * 0.12;
+        break;
+      }
+      case 'Penguin': {
+        const s = Math.sin(t * 6);
+        b.rotation.z = s * 0.14;
+        b.position.y += Math.abs(s) * 0.04;
+        if (P.ArmL) P.ArmL.rotation.z = rest(P.ArmL).r.z + (0.25 + 0.25 * Math.sin(t * 9)) ;
+        if (P.ArmR) P.ArmR.rotation.x = rest(P.ArmR).r.x - this.lunge * 1.2 + Math.sin(t * 2) * 0.05;
+        break;
+      }
+      case 'Yeti': {
+        const s = Math.sin(t * 2.2);
+        b.position.y += Math.abs(s) * 0.05;
+        b.rotation.z = s * 0.05;
+        if (P.ArmL) P.ArmL.rotation.x = rest(P.ArmL).r.x + s * 0.3 - this.lunge * 0.8;
+        if (P.ArmR) P.ArmR.rotation.x = rest(P.ArmR).r.x - s * 0.3 - this.lunge * 0.8;
+        break;
+      }
+      case 'Lizard': {
+        const amp = Math.min(0.5, 0.15 + this.speed * 0.08);
+        const s = Math.sin(t * (6 + this.speed * 0.5));
+        const sw = (o, v) => { if (o) o.rotation.y = rest(o).r.y + v; };
+        sw(P.LegFL, s * amp); sw(P.LegBR, s * amp); sw(P.LegFR, s * amp); sw(P.LegBL, s * amp);
+        b.rotation.y = s * 0.08;
+        if (P.Tail) P.Tail.rotation.y = rest(P.Tail).r.y - s * 0.25;
+        if (P.Head) P.Head.rotation.x = rest(P.Head).r.x + Math.sin(t * 1.5) * 0.06 + this.lunge * 0.5;
+        if (P.Flame) P.Flame.scale.set(1 + Math.sin(t * 13) * 0.12, 1 + Math.sin(t * 17) * 0.18, 1 + Math.sin(t * 11) * 0.12);
+        break;
+      }
+      case 'Firebird': {
+        const f = Math.sin(t * 5);
+        const y = Math.sin(t * 1.8) * 0.15 + f * 0.04;
+        b.position.y += y;
+        for (const [o, sgn] of [[P.WingL, 1], [P.WingR, -1]]) {
+          if (!o) continue;
+          o.rotation.z = rest(o).r.z + sgn * f * 0.65;
+          o.position.y = rest(o).p.y + y;
+        }
+        if (P.Tail) { P.Tail.position.y = rest(P.Tail).p.y + y; P.Tail.rotation.x = rest(P.Tail).r.x + Math.sin(t * 2.3) * 0.12; }
+        break;
+      }
+      case 'Ifrit': {
+        const y = Math.sin(t * 1.4) * 0.18;
+        b.position.y += y;
+        if (P.ArmL) P.ArmL.rotation.x = rest(P.ArmL).r.x + Math.sin(t * 1.4) * 0.15 - this.lunge * 0.9;
+        if (P.ArmR) P.ArmR.rotation.x = rest(P.ArmR).r.x + Math.sin(t * 1.4 + 1) * 0.15 - this.lunge * 0.9;
+        if (P.Head) P.Head.rotation.x = rest(P.Head).r.x + Math.sin(t * 0.9) * 0.06 + this.lunge * 0.3;
+        if (P.Flame) { P.Flame.rotation.y = t * 1.5; P.Flame.scale.set(1 + Math.sin(t * 9) * 0.05, 1 + Math.sin(t * 13) * 0.08, 1 + Math.sin(t * 9) * 0.05); }
+        if (P.Hair) P.Hair.scale.set(1, 1 + Math.sin(t * 15) * 0.12, 1);
+        break;
+      }
+      case 'EvilEye': {
+        const f = Math.sin(t * 11);
+        const y = Math.sin(t * 2) * 0.15;
+        b.position.y += y;
+        b.rotation.y = Math.sin(t * 0.9) * 0.25;
+        b.rotation.x = this.lunge * 0.4;
+        for (const [o, sgn] of [[P.WingL, 1], [P.WingR, -1]]) {
+          if (!o) continue;
+          o.rotation.z = rest(o).r.z + sgn * f * 0.7;
+          o.position.y = rest(o).p.y + y;
+        }
+        if (P.Tentacles) { P.Tentacles.position.y = rest(P.Tentacles).p.y + y; P.Tentacles.rotation.y = Math.sin(t * 1.3) * 0.4; P.Tentacles.rotation.x = Math.sin(t * 1.7) * 0.1; }
+        break;
+      }
+      case 'Zenos': {
+        const y = Math.sin(t * 1.1) * 0.2;
+        b.position.y += y;
+        const fl = Math.sin(t * 1.6);
+        for (const [o, sgn] of [[P.WingL, 1], [P.WingR, -1]]) {
+          if (!o) continue;
+          o.rotation.z = rest(o).r.z + sgn * (fl * 0.25 + 0.05);
+          o.position.y = rest(o).p.y + y;
+        }
+        if (P.ArmR) P.ArmR.rotation.x = rest(P.ArmR).r.x - this.lunge * 1.0 + Math.sin(t * 0.8) * 0.06;
+        if (P.ArmL) P.ArmL.rotation.x = rest(P.ArmL).r.x - this.lunge * 0.6 + Math.sin(t * 0.8 + 1) * 0.06;
+        if (P.Head) P.Head.rotation.y = rest(P.Head).r.y + Math.sin(t * 0.5) * 0.15;
+        break;
+      }
       default: break;
     }
     if (this.flash > 0) {

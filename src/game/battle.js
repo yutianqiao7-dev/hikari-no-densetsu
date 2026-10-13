@@ -275,7 +275,7 @@ export class Battle {
   focusPoints(withAllies, actor) {
     const pts = [];
     for (const e of this.alive.length ? this.alive : this.enemies) {
-      const h = this.isBig(e) ? 6.2 * (e.def.scale || 1.15) / 1.15 : ({ Bat: 2.2, Ghost: 2.2, Wisp: 2.4, Gargoyle: 2.6, Skeleton: 2.1, Crab: 1.2, Snake: 1.6 }[e.m.kind] || 1.9) * (e.def.scale || 1);
+      const h = this.isBig(e) ? 6.2 * (e.def.scale || 1.15) / 1.15 : ({ Bat: 2.2, Ghost: 2.2, Wisp: 2.4, Gargoyle: 2.6, Skeleton: 2.1, Crab: 1.2, Snake: 1.6, Scorpion: 1.8, Mummy: 2.0, Cactus: 1.6, Anubis: 2.9, Snowman: 1.9, Penguin: 1.5, Yeti: 2.6, Lizard: 1.1, Firebird: 2.3, EvilEye: 2.3, DarkKnight: 2.3 }[e.m.kind] || 1.9) * (e.def.scale || 1);
       const r = this.isBig(e) ? 3.2 : 0.7 * (e.def.scale || 1);
       pts.push(e.home.clone().addScaledVector(this.right, r), e.home.clone().addScaledVector(this.right, -r), e.home.clone().add(V(0, h, 0)), e.home.clone());
     }
@@ -758,6 +758,14 @@ export class Battle {
     fx.emit({ pos: p, count: big ? 300 : 70, color: big ? [0xffffff, 0xffe080, 0xb080ff] : [0xffffff, 0xc8b8ff, 0x99ccff], speed: big ? 9 : 3, up: 1.5, life: big ? 2.2 : 1.1, size: big ? 0.5 : 0.28, drag: 1.2, spread: big ? 4 : 0.8 });
     if (big) { this.shake = 2; this.g.ui.flashScreen('#fff', 1200, 1); fx.flashLight(p, 0xffffff, 120, 2.5); }
     const m = t.m, s0 = m.root.scale.clone(), t0 = performance.now();
+    if (t.key === 'dragon') {
+      // 魔竜は消えない（やみが抜けて正気に戻る）
+      m.lunge = -0.8;
+      await sleep(2200);
+      m.lunge = 0;
+      await this.log.add(`${t.name}を たおした！`, 280);
+      return;
+    }
     await new Promise((res) => {
       const step = () => {
         const k = Math.min(1, (performance.now() - t0) / (big ? 2200 : 650));
@@ -1048,7 +1056,7 @@ export class Battle {
     for (const a of this.liveAllies) a.h.play('Victory', { hold: true });
     if (this.opts.boss === 'dragon' || this.enemies[0].def.final) {
       audio.play('victory');
-      await this.log.add(`${this.enemies[0].name}は ひかりの なかへ きえていった……。`, 1500);
+      await this.log.add(this.enemies[0].def.final ? `${this.enemies[0].name}は ひかりの なかへ きえていった……。` : `${this.enemies[0].name}は ちからつき、 ひざを ついた……。`, 1500);
       return;
     }
     audio.jingle('victory', this.g.fieldMusic());
@@ -1087,7 +1095,7 @@ export class Battle {
       if (e.m === this.f.boss || e.m === this.f.guardian) continue;
       this.g.scene.remove(e.m.root);
     }
-    if (this.opts.boss && result === 'win') this.bossObj.root.visible = false;
+    if (this.opts.boss && result === 'win' && this.opts.boss !== 'dragon') this.bossObj.root.visible = false;
     for (const a of this.allies) { if (a.m.hp > 0) a.h.stopOneShot(); a.h.speed = 0; }
     this.allies[0].h.setWeapon(false);
     this.g.world.veg.setExclude(null);

@@ -1190,6 +1190,20 @@ def make_actions(arm):
     key_pose(arm, 18, strike, hip_dz=-0.06)
     key_pose(arm, 26, ready)
 
+    # Ride（竜の背にまたがる 40f）：ひざを曲げて鞍をはさみ、手綱を持つように腕を前へ
+    new_action(arm, "Ride")
+    for f_, br in ((0, 0.0), (20, 1.0), (40, 0.0)):
+        ride = compose(BASE, {
+            'thigh.L': R(x=-1.25, y=-0.42), 'thigh.R': R(x=-1.25, y=0.42),
+            'shin.L': R(x=1.35), 'shin.R': R(x=1.35),
+            'foot.L': R(x=-0.25), 'foot.R': R(x=-0.25),
+            'spine': R(x=0.12 + 0.03 * br), 'chest': R(x=0.06), 'head': R(x=-0.15 - 0.03 * br),
+            'upper_arm.L': R(x=-0.55), 'upper_arm.R': R(x=-0.55),
+            'forearm.L': ELB('L', 1.0), 'forearm.R': ELB('R', 1.0),
+            'cape.1': R(x=0.55 + 0.1 * br), 'cape.2': R(x=0.35 + 0.08 * br),
+        })
+        key_pose(arm, f_, ride, hip_dz=-0.01 * br)
+
     # Cast（呪文 30f）
     new_action(arm, "Cast")
     cast = compose(BASE, {
@@ -1246,7 +1260,7 @@ def make_actions(arm):
     # すべてのアクションを NLA トラックに積む（glTF に全クリップを書き出すため）
     ad = arm.animation_data
     ad.action = None
-    for nm in ("Idle", "Walk", "Run", "Attack", "Cast", "Hurt", "Victory", "Down", "Talk"):
+    for nm in ("Idle", "Walk", "Run", "Attack", "Cast", "Hurt", "Victory", "Down", "Talk", "Ride"):
         act = bpy.data.actions[nm]
         tr = ad.nla_tracks.new()
         tr.name = nm

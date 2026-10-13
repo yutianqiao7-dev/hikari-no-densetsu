@@ -169,6 +169,39 @@ M_DARK = mat("Abyss", (0.0, 0.0, 0.0), 1.0)
 M_DAYLIGHT = mat("Daylight", (1.0, 0.95, 0.8), 0.5, emit=(1.0, 0.92, 0.75), emit_strength=2.5)
 M_ORB = mat("LightOrb", (1.0, 0.9, 0.5), 0.1, emit=(1.0, 0.85, 0.4), emit_strength=8.0)
 
+# 第二部のダンジョン用
+M_PYR_W = mat("PyrStone", (0.86, 0.72, 0.5), 0.9)
+M_PYR_T = mat("PyrStoneDark", (0.7, 0.56, 0.36), 0.9)
+M_PYR_F = mat("SandFloor", (0.78, 0.66, 0.48), 0.9)
+M_GLYPH = mat("Hieroglyph", (0.35, 0.22, 0.12), 0.9)
+M_PYR_C = mat("RoyalCarpet", (0.34, 0.06, 0.05), 0.95)
+M_PYR_B = mat("PharaohBanner", (0.12, 0.25, 0.6), 0.8, double=True)
+M_ICE_W = mat("IceWall", (0.62, 0.82, 0.98), 0.12, emit=(0.25, 0.5, 0.9), emit_strength=0.5)
+M_ICE_W2 = mat("IceWallDeep", (0.32, 0.55, 0.85), 0.15, emit=(0.12, 0.3, 0.7), emit_strength=0.5)
+M_ICE_F = mat("IceFloor", (0.55, 0.68, 0.8), 0.3)
+M_ICE_L = mat("FrozenPool", (0.55, 0.78, 1.0), 0.05, emit=(0.2, 0.45, 0.8), emit_strength=0.8)
+M_ICE_C = mat("IceCrystal", (0.62, 0.86, 1.0), 0.08, emit=(0.35, 0.7, 1.0), emit_strength=2.5)
+M_BAS_1 = mat("Basalt", (0.12, 0.11, 0.11), 0.9)
+M_BAS_2 = mat("BasaltDark", (0.07, 0.065, 0.06), 0.95)
+M_BAS_F = mat("LavaCaveFloor", (0.18, 0.15, 0.14), 0.9)
+M_LAVA = mat("LavaPool", (0.9, 0.3, 0.05), 0.6, emit=(1.0, 0.3, 0.04), emit_strength=1.6)
+M_EMBER = mat("EmberCrystal", (1.0, 0.5, 0.15), 0.3, emit=(1.0, 0.42, 0.1), emit_strength=4.0)
+M_CHAOS_W = mat("ChaosStone", (0.22, 0.2, 0.26), 0.85)
+M_CHAOS_T = mat("ChaosStoneDark", (0.12, 0.1, 0.15), 0.9)
+M_CHAOS_F = mat("ChaosFloor", (0.3, 0.27, 0.33), 0.9)
+M_CHAOS_C = mat("ChaosCarpet", (0.26, 0.03, 0.07), 0.95)
+M_CHAOS_B = mat("ChaosBanner", (0.25, 0.04, 0.3), 0.8, double=True)
+M_REDGLOW = mat("RedGlow", (1.0, 0.2, 0.25), 0.3, emit=(1.0, 0.15, 0.2), emit_strength=3.0)
+
+STY = {
+    'cave': dict(rocky=True, w1=M_CROCK, w2=M_CROCK2, floor=M_CFLOOR, liquid=M_CWATER, liquid_y=-0.35, crystal=M_CRYSTAL, cl=0x40c8ff, wall_h=7.0, shroom=True),
+    'icecave': dict(rocky=True, w1=M_ICE_W, w2=M_ICE_W2, floor=M_ICE_F, liquid=M_ICE_L, liquid_y=-0.1, crystal=M_ICE_C, cl=0x80d8ff, wall_h=7.0, crystal_rate=0.3),
+    'lava': dict(rocky=True, w1=M_BAS_1, w2=M_BAS_2, floor=M_BAS_F, liquid=M_LAVA, liquid_y=-0.3, liquid_light=0xff5a18, crystal=M_EMBER, cl=0xff7020, wall_h=7.0, crystal_rate=0.18),
+    'tower': dict(rocky=False, wall=M_TSTONE, trim=M_TTRIM, floor=M_TFLOOR, carpet=M_TCARPET, slit=M_SLIT, banner=M_BANNER, wall_h=6.0, circle=M_MAGIC),
+    'pyramid': dict(rocky=False, wall=M_PYR_W, trim=M_PYR_T, floor=M_PYR_F, carpet=M_PYR_C, slit=M_GLYPH, banner=M_PYR_B, wall_h=6.0, circle=M_GOLD, glyph=True),
+    'darkcastle': dict(rocky=False, wall=M_CHAOS_W, trim=M_CHAOS_T, floor=M_CHAOS_F, carpet=M_CHAOS_C, slit=M_MAGIC, banner=M_CHAOS_B, wall_h=6.5, circle=M_REDGLOW),
+}
+
 
 def build_floor(index, fid, name, kind, grid, door=None, exit_=None):
     validate(fid, grid)
@@ -188,11 +221,19 @@ def build_floor(index, fid, name, kind, grid, door=None, exit_=None):
     def L(x, z, y=0.0):
         return B(x, z, y)
 
-    wall_h = 7.0 if kind == 'cave' else 6.0
+    st = STY[kind]
+    rocky = st['rocky']
+    wall_h = st['wall_h']
+    TRIM = st['w2'] if rocky else st['trim']
     floor_mb, wall_mb, deco_mb, water_mb = MB(), MB(), MB(), MB()
     info = {"id": fid, "name": name, "kind": kind, "origin": [ox, oz], "cell": CELL, "grid": grid,
             "torches": [], "chests": [], "spots": {}, "lights": [], "door": door, "exit": exit_}
 
+    bcells = [(i, j) for j in range(Hh) for i in range(W) if cell(i, j) == 'B']
+    boss_c = bcells[0] if bcells else (-1, -1)
+    if bcells:
+        bcx = sum(center(i, j)[0] for i, j in bcells) / len(bcells)
+        bcz = sum(center(i, j)[1] for i, j in bcells) / len(bcells)
     for j in range(Hh):
         for i in range(W):
             c = cell(i, j)
@@ -202,8 +243,10 @@ def build_floor(index, fid, name, kind, grid, door=None, exit_=None):
             # ---------------- 床
             if c != '#':
                 if c == 'W':
-                    water_mb.add('cube', M_CWATER, loc=L(cx, cz, -0.35), scale=(CELL, CELL, 0.1))
-                    floor_mb.add('cube', M_CROCK2, loc=L(cx, cz, -1.2), scale=(CELL, CELL, 0.4))
+                    water_mb.add('cube', st.get('liquid', M_CWATER), loc=L(cx, cz, st.get('liquid_y', -0.35)), scale=(CELL, CELL, 0.1))
+                    floor_mb.add('cube', TRIM, loc=L(cx, cz, -1.2), scale=(CELL, CELL, 0.4))
+                    if st.get('liquid_light') and (i + j) % 2 == 0:
+                        info["lights"].append([ox + cx, 1.0, oz + cz, st['liquid_light']])
                 else:
                     n = 4
                     verts, faces = [], []
@@ -212,83 +255,85 @@ def build_floor(index, fid, name, kind, grid, door=None, exit_=None):
                             x = cx - CELL / 2 + a * CELL / n
                             z = cz - CELL / 2 + b * CELL / n
                             y = 0.0
-                            if kind == 'cave':
+                            if rocky:
                                 y = (math.sin(x * 1.7 + ox) * math.cos(z * 1.3) * 0.05)
                             verts.append(L(x, z, y))
                     for b in range(n):
                         for a in range(n):
                             k = b * (n + 1) + a
                             faces.append((k, k + n + 1, k + n + 2, k + 1))
-                    floor_mb.poly(verts, faces, M_CFLOOR if kind == 'cave' else M_TFLOOR, smooth=True)
+                    floor_mb.poly(verts, faces, st['floor'], smooth=True)
                 if c == 'R':
-                    deco_mb.add('cube', M_TCARPET, loc=L(cx, cz, 0.03), scale=(CELL, CELL, 0.04))
+                    deco_mb.add('cube', st.get('carpet', M_TCARPET), loc=L(cx, cz, 0.03), scale=(CELL, CELL, 0.04))
             # ---------------- 壁
             if c == '#':
                 near_floor = any(cell(i + di, j + dj) != '#' for di in (-1, 0, 1) for dj in (-1, 0, 1))
                 if not near_floor:
                     continue
-                if kind == 'cave':
+                if rocky:
                     # 土台の岩塊（セルを埋める）＋縦に伸びた岩柱で、ごつごつした洞窟の壁
-                    wall_mb.add('ico', M_CROCK2, loc=L(cx, cz, 1.0), r=2.5, sub=2, rot=(0, 0, rng.uniform(0, 6.3)),
+                    wall_mb.add('ico', st['w2'], loc=L(cx, cz, 1.0), r=2.5, sub=2, rot=(0, 0, rng.uniform(0, 6.3)),
                                 scale=(1.05, 1.05, 0.75), jitter=0.9, smooth=False, seed=i * 31 + j * 17)
                     for k in range(2):
                         rx, rz = cx + rng.uniform(-1.2, 1.2), cz + rng.uniform(-1.2, 1.2)
                         r = rng.uniform(1.1, 1.7)
-                        wall_mb.add('ico', M_CROCK if k % 2 == 0 else M_CROCK2, loc=L(rx, rz, rng.uniform(2.0, 3.2)), r=r, sub=2,
+                        wall_mb.add('ico', st['w1'] if k % 2 == 0 else st['w2'], loc=L(rx, rz, rng.uniform(2.0, 3.2)), r=r, sub=2,
                                     rot=(rng.uniform(-0.25, 0.25), rng.uniform(-0.25, 0.25), rng.uniform(0, 6.3)),
                                     scale=(rng.uniform(0.8, 1.2), rng.uniform(0.8, 1.2), rng.uniform(1.8, 2.6)), jitter=0.7, smooth=False,
                                     seed=i * 13 + j * 7 + k * 3)
-                    if rng.random() < 0.12:
+                    if rng.random() < st.get('crystal_rate', 0.12):
                         # 光る水晶
                         for k in range(rng.randint(2, 4)):
                             a = rng.uniform(0, math.tau)
-                            deco_mb.add('ico', M_CRYSTAL, loc=L(cx + math.cos(a) * 1.6, cz + math.sin(a) * 1.6, rng.uniform(0.6, 2.5)), r=0.45, sub=0,
+                            deco_mb.add('ico', st['crystal'], loc=L(cx + math.cos(a) * 1.6, cz + math.sin(a) * 1.6, rng.uniform(0.6, 2.5)), r=0.45, sub=0,
                                         rot=(rng.uniform(-0.5, 0.5), rng.uniform(-0.5, 0.5), a), scale=(0.45, 0.45, 1.8), smooth=False)
-                        info["lights"].append([ox + cx, 1.8, oz + cz, 0x40c8ff])
+                        info["lights"].append([ox + cx, 1.8, oz + cz, st['cl']])
                 else:
-                    wall_mb.add('cube', M_TSTONE, loc=L(cx, cz, wall_h / 2), scale=(CELL, CELL, wall_h))
-                    wall_mb.add('cube', M_TTRIM, loc=L(cx, cz, wall_h + 0.2), scale=(CELL + 0.2, CELL + 0.2, 0.4))
-                    wall_mb.add('cube', M_TTRIM, loc=L(cx, cz, 0.25), scale=(CELL + 0.12, CELL + 0.12, 0.5))
+                    wall_mb.add('cube', st['wall'], loc=L(cx, cz, wall_h / 2), scale=(CELL, CELL, wall_h))
+                    wall_mb.add('cube', st['trim'], loc=L(cx, cz, wall_h + 0.2), scale=(CELL + 0.2, CELL + 0.2, 0.4))
+                    wall_mb.add('cube', st['trim'], loc=L(cx, cz, 0.25), scale=(CELL + 0.12, CELL + 0.12, 0.5))
+                    if st.get('glyph'):
+                        wall_mb.add('cube', M_GOLD, loc=L(cx, cz, wall_h - 0.9), scale=(CELL + 0.06, CELL + 0.06, 0.12))
                     # 内側を向いた面に窓（月明かり）や旗
                     for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                         if cell(i + di, j + dj) in ".RPCTSUDBO" and rng.random() < 0.18:
                             fx, fz = cx + di * (CELL / 2 + 0.02), cz + dj * (CELL / 2 + 0.02)
                             if rng.random() < 0.5:
                                 sc = (0.06, 0.5, 2.0) if di else (0.5, 0.06, 2.0)
-                                deco_mb.add('cube', M_SLIT, loc=L(fx, fz, 3.6), scale=sc)
+                                deco_mb.add('cube', st['slit'], loc=L(fx, fz, 3.6 if not st.get('glyph') else 2.6), scale=sc if not st.get('glyph') else ((0.06, 2.4, 2.6) if di else (2.4, 0.06, 2.6)))
                             else:
                                 sc = (0.05, 1.4, 3.0) if di else (1.4, 0.05, 3.0)
-                                deco_mb.add('cube', M_BANNER, loc=L(fx + di * 0.05, fz + dj * 0.05, 3.3), scale=sc)
+                                deco_mb.add('cube', st['banner'], loc=L(fx + di * 0.05, fz + dj * 0.05, 3.3), scale=sc)
                                 deco_mb.add('ico', M_GOLD, loc=L(fx + di * 0.1, fz + dj * 0.1, 3.6), r=0.28, sub=1, scale=(1, 1, 1.2))
             # ---------------- 柱
             if c == 'P':
-                deco_mb.add('cyl', M_TSTONE, loc=L(cx, cz, wall_h / 2), r1=0.75, r2=0.68, depth=wall_h, seg=16)
-                deco_mb.add('cube', M_TTRIM, loc=L(cx, cz, 0.3), scale=(1.9, 1.9, 0.6))
-                deco_mb.add('cube', M_TTRIM, loc=L(cx, cz, wall_h - 0.3), scale=(1.9, 1.9, 0.6))
+                deco_mb.add('cyl', st['w1'] if rocky else st['wall'], loc=L(cx, cz, wall_h / 2), r1=0.75, r2=0.68, depth=wall_h, seg=16)
+                deco_mb.add('cube', TRIM, loc=L(cx, cz, 0.3), scale=(1.9, 1.9, 0.6))
+                deco_mb.add('cube', TRIM, loc=L(cx, cz, wall_h - 0.3), scale=(1.9, 1.9, 0.6))
             # ---------------- かがり火
             if c == 'T':
-                if kind == 'cave':
-                    deco_mb.add('ico', M_CROCK2, loc=L(cx, cz, 0.45), r=0.6, sub=1, scale=(1, 1, 0.8), jitter=0.1, smooth=False)
-                    deco_mb.add('cyl', M_CROCK, loc=L(cx, cz, 1.0), r1=0.55, r2=0.7, depth=0.4, seg=10)
+                if rocky:
+                    deco_mb.add('ico', st['w2'], loc=L(cx, cz, 0.45), r=0.6, sub=1, scale=(1, 1, 0.8), jitter=0.1, smooth=False)
+                    deco_mb.add('cyl', st['w1'], loc=L(cx, cz, 1.0), r1=0.55, r2=0.7, depth=0.4, seg=10)
                 else:
                     deco_mb.add('cyl', M_IRON, loc=L(cx, cz, 0.7), r1=0.12, r2=0.1, depth=1.4, seg=8)
                     deco_mb.add('cyl', M_IRON, loc=L(cx, cz, 0.08), r1=0.45, r2=0.35, depth=0.16, seg=10)
                     deco_mb.add('cyl', M_IRON, loc=L(cx, cz, 1.45), r1=0.35, r2=0.6, depth=0.35, seg=12)
-                info["torches"].append([ox + cx, 1.75 if kind == 'tower' else 1.3, oz + cz])
+                info["torches"].append([ox + cx, 1.3 if rocky else 1.75, oz + cz])
             # ---------------- 階段・出口
             if c == 'U':
                 for k in range(6):
                     hgt = 0.4 * (k + 1)
-                    deco_mb.add('cube', M_CROCK2 if kind == 'cave' else M_TTRIM, loc=L(cx, cz + 1.65 - k * 0.62, hgt / 2),
+                    deco_mb.add('cube', TRIM, loc=L(cx, cz + 1.65 - k * 0.62, hgt / 2),
                                 scale=(CELL * 0.9, 0.62, hgt))
                 deco_mb.add('cube', M_DARK, loc=L(cx, cz - CELL / 2 + 0.1, 3.2), scale=(CELL * 0.8, 0.1, 1.6))
             if c == 'D':
                 floor_mb.add('cube', M_DARK, loc=L(cx, cz, -0.02), scale=(CELL * 0.8, CELL * 0.8, 0.06))
                 for k in range(5):
-                    deco_mb.add('cube', M_CROCK2 if kind == 'cave' else M_TTRIM, loc=L(cx, cz + 1.2 - k * 0.55, -0.15 - k * 0.3),
+                    deco_mb.add('cube', TRIM, loc=L(cx, cz + 1.2 - k * 0.55, -0.15 - k * 0.3),
                                 scale=(CELL * 0.75, 0.55, 0.3))
                 for sx in (-1, 1):
-                    deco_mb.add('cube', M_TTRIM if kind == 'tower' else M_CROCK2, loc=L(cx + sx * CELL * 0.45, cz, 0.3), scale=(0.3, CELL * 0.85, 0.6))
+                    deco_mb.add('cube', TRIM, loc=L(cx + sx * CELL * 0.45, cz, 0.3), scale=(0.3, CELL * 0.85, 0.6))
             if c == 'S':
                 # 外の光（洞窟の入口／塔の扉）は外周の壁側に置く
                 sd = 1 if j > Hh / 2 else -1
@@ -298,17 +343,17 @@ def build_floor(index, fid, name, kind, grid, door=None, exit_=None):
                 deco_mb.add('cyl', M_TTRIM, loc=L(cx, cz, 0.5), r1=0.8, r2=0.6, depth=1.0, seg=8)
                 deco_mb.add('cyl', M_GOLD, loc=L(cx, cz, 1.05), r1=0.5, r2=0.55, depth=0.1, seg=16)
                 info["lights"].append([ox + cx, 1.8, oz + cz, 0xffe090])
-            if c == 'B' and kind == 'tower':
-                deco_mb.add('cyl', M_MAGIC, loc=L(cx, cz, 0.02), r1=3.0, r2=3.0, depth=0.03, seg=32)
-                deco_mb.add('cyl', M_TFLOOR, loc=L(cx, cz, 0.03), r1=2.75, r2=2.75, depth=0.035, seg=32)
+            if c == 'B' and st.get('circle') and (i, j) == tuple(boss_c):
+                deco_mb.add('cyl', st['circle'], loc=L(bcx, bcz, 0.02), r1=3.0, r2=3.0, depth=0.03, seg=32)
+                deco_mb.add('cyl', st['floor'], loc=L(bcx, bcz, 0.03), r1=2.75, r2=2.75, depth=0.035, seg=32)
             # ---------------- 洞窟の床の飾り（石筍・光るキノコ）
-            if kind == 'cave' and c == '.':
+            if rocky and c == '.':
                 walls = sum(1 for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)) if cell(i + di, j + dj) == '#')
                 if walls and rng.random() < 0.35:
                     a = rng.uniform(0, math.tau)
                     px, pz = cx + math.cos(a) * 1.5, cz + math.sin(a) * 1.5
-                    deco_mb.add('cyl', M_CROCK, loc=L(px, pz, 0.6), r1=0.35, r2=0.03, depth=rng.uniform(0.8, 1.8), seg=7, jitter=0.05)
-                if walls and rng.random() < 0.25:
+                    deco_mb.add('cyl', st['crystal'] if kind == 'icecave' else st['w1'], loc=L(px, pz, 0.6), r1=0.35, r2=0.03, depth=rng.uniform(0.8, 1.8), seg=7, jitter=0.05)
+                if walls and st.get('shroom') and rng.random() < 0.25:
                     a = rng.uniform(0, math.tau)
                     for k in range(3):
                         px, pz = cx + math.cos(a) * 1.4 + rng.uniform(-0.3, 0.3), cz + math.sin(a) * 1.4 + rng.uniform(-0.3, 0.3)
@@ -665,5 +710,9 @@ def validate_room(fid, grid):
 FLOOR_DOORS = {"cave1": ("CaveEntrance", "CaveExit"), "tower1": ("TowerDoor", "TowerExit")}
 infos = [build_floor(k, *f, *FLOOR_DOORS.get(f[0], (None, None))) for k, f in enumerate(FLOORS)]
 infos += [build_room(len(FLOORS) + k, *r) for k, r in enumerate(ROOMS)]
+import island_floors
+importlib.reload(island_floors)
+base = len(FLOORS) + len(ROOMS)
+infos += [build_floor(base + k, *f, *island_floors.ISLAND_DOORS.get(f[0], (None, None))) for k, f in enumerate(island_floors.ISLAND_FLOORS)]
 C_INT["data"] = json.dumps({"floors": infos}, ensure_ascii=False)
 print("interiors done", [(i["id"], len(i["chests"]), len(i["torches"])) for i in infos])

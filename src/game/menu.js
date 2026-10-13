@@ -203,7 +203,7 @@ async function settingsMenu(g) {
 /** 宿屋（全員回復・たおれた仲間も目をさます） */
 export async function inn(g) {
   const ui = g.ui, s = g.state;
-  const price = 6 * s.party.length + 4;
+  const price = (6 * s.party.length + 4) * ({ desert: 3, ice: 4, volcano: 6, dark: 8 }[g.world.map.id] || 1);
   const w = await ui.say({ who: 'やどや', text: `たびびとの やどやへ ようこそ。 ひとばん ${price}ゴールドですが おとまりに なりますか？` }, { keep: true });
   const yes = await ui.yesno();
   w.remove();

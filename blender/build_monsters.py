@@ -376,10 +376,12 @@ def build_dragon(x):
         t = i / 8
         p = Vector((0, -0.95 - t * 0.55, 1.85 + t * 2.2))
         mb.add('cyl', mat("BellyLine", (0.55, 0.38, 0.2), 0.7), loc=tuple(p), rot=(1.2 - t * 0.6, 0, 0), r1=0.5 - t * 0.2, r2=0.5 - t * 0.2, depth=0.025, seg=24, scale=(1, 0.55, 1))
-    # 背中のトゲ
+    # 背中のトゲ（乗るときは鞍に替えるので別の部品）
+    smb = CMB()
     spine = [Vector((0, 0.8 - i * 0.42, 3.1 + max(0, -i + 2) * -0.05)) for i in range(6)]
     for i, p in enumerate(spine):
-        mb.add('cyl', horn, loc=tuple(p + Vector((0, 0, 0.12))), rot=(0.35, 0, 0), r1=0.17 - i * 0.012, r2=0.0, depth=0.6, seg=6, scale=(0.4, 1, 1))
+        smb.add('cyl', horn, loc=tuple(p + Vector((0, 0, 0.12))), rot=(0.35, 0, 0), r1=0.17 - i * 0.012, r2=0.0, depth=0.6, seg=6, scale=(0.4, 1, 1))
+    smb.build("Mon_Dragon_BackSpikes", COLL, parent=body)
     for i in range(1, 12, 2):
         p = tail[i]
         mb.add('cyl', horn, loc=tuple(p + Vector((0, 0, tr[i] + 0.1))), rot=(0.5, 0, 0), r1=tr[i] * 0.45, r2=0.0, depth=0.42, seg=6, scale=(0.4, 1, 1))
@@ -391,6 +393,49 @@ def build_dragon(x):
             for k in (-1, 0, 1):
                 mb.add('cyl', horn, loc=(s * fx + k * 0.13, fy, 0.08), rot=(math.pi / 2 + 0.4, 0, k * 0.25), r1=0.07, r2=0.0, depth=0.3, seg=6)
     mb.build("Mon_Dragon_Spikes", COLL, parent=body)
+
+    # 鞍（第二部で竜に乗るとき）：背中の形に沿わせた革の座面・布・金の縁取り・腹帯
+    dsurf = Surface(me)
+    leather = mat("SaddleLeather", (0.34, 0.19, 0.09), 0.55)
+    cloth = mat("SaddleCloth", (0.55, 0.07, 0.1), 0.85, double=True)
+    trim = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+    ys = [-1.35 + k * 0.15 for k in range(18)]
+    top = []
+    for y in ys:
+        hp, hn = dsurf.ray(Vector((0, y, 9)), Vector((0, 0, -1)))
+        top.append(hp if hp else Vector((0, y, 3.2)))
+    mb = CMB()
+    mb.tube([t + Vector((0, 0, 0.07)) for t in top], [0.48] * len(top), leather, seg=18, flat=0.28)
+    for sx in (-1, 1):
+        verts, faces = [], []
+        for k, t in enumerate(top):
+            verts.append((sx * 0.42, t.y, t.z + 0.04))
+            verts.append((sx * 0.92, t.y, t.z - 0.75))
+        for k in range(len(top) - 1):
+            a_ = k * 2
+            faces.append((a_, a_ + 2, a_ + 3, a_ + 1) if sx > 0 else (a_, a_ + 1, a_ + 3, a_ + 2))
+        mb.poly(verts, faces, cloth, smooth=True)
+        mb.tube([Vector((sx * 0.93, t.y, t.z - 0.77)) for t in top], [0.03] * len(top), trim, seg=6)
+    # 腹帯
+    for yb in (-0.6, 0.55):
+        ring = []
+        for k in range(25):
+            a_ = k / 24 * math.tau
+            d = Vector((math.sin(a_), 0, math.cos(a_)))
+            hp, hn = dsurf.ray(Vector((0, yb, 2.3)) + d * 3, -d)
+            if hp:
+                ring.append(hp + d * 0.04)
+        if len(ring) > 4:
+            mb.tube(ring, [0.05] * len(ring), leather, seg=6, flat=0.4)
+    # 前の取っ手
+    t0 = top[1]
+    mb.tube([t0 + Vector((0, 0, 0.1)), t0 + Vector((0, -0.05, 0.45)), t0 + Vector((0, -0.18, 0.55))], [0.06, 0.05, 0.05], trim, seg=8)
+    mb.build("Mon_Dragon_Saddle", COLL, parent=body)
+    seat = []
+    for y in (-0.95, -0.38, 0.2, 0.78):
+        hp, hn = dsurf.ray(Vector((0, y, 9)), Vector((0, 0, -1)))
+        seat.append(round((hp.z if hp else 3.2) + 0.07 + 0.48 * 0.28, 3))
+    print("DRAGON SEATS (game y)", seat)
 
     # 頭（首の先が原点）
     hel = [
@@ -1098,6 +1143,7 @@ build_wisp(32.0)
 build_snake(35.0)
 build_gargoyle(38.0)
 build_coffin(41.0)
+exec(compile(open(os.path.join(_here, "monsters_sequel.py"), encoding="utf-8").read(), "monsters_sequel.py", "exec"))
 
 if _temp_link:
     SCENE.collection.children.unlink(COLL)

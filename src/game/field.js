@@ -147,7 +147,7 @@ export class Field {
     this.ibossObj = null;
     const ib = ISLAND_BOSSES[env.id];
     const ip = ib ? at('B') : null;
-    if (ib && ip && !fl[ib.flag]) {
+    if (ib && ip && !fl[ib.flag] && this.world.lib.has(MONSTERS[ib.key].model)) {
       this.ibossCache = this.ibossCache || {};
       let m = this.ibossCache[ib.key];
       if (!m) { m = new Monster(this.world.lib, MONSTERS[ib.key]); this.scene.add(m.root); this.ibossCache[ib.key] = m; }
@@ -558,7 +558,8 @@ export class Field {
       if (m.fadeIn < 1 && !m.leaving) { m.fadeIn = Math.min(1, m.fadeIn + dt * 1.5); m.setOpacity(m.fadeIn); }
       if (m.leaving) m.setOpacity(Math.max(0, m.opacity - dt * 1.5));
       let sp = 0;
-      const fast = { Bat: 5.2, Golem: 2.6, Ghost: 3.8, Wolf: 5.6, Crab: 3.0, Stump: 3.0, Skeleton: 3.6, Wisp: 4.4, Snake: 3.8, Gargoyle: 5.0 }[m.kind] || 4.0;
+      const fast = { Bat: 5.2, Golem: 2.6, Ghost: 3.8, Wolf: 5.6, Crab: 3.0, Stump: 3.0, Skeleton: 3.6, Wisp: 4.4, Snake: 3.8, Gargoyle: 5.0,
+        Scorpion: 4.2, Mummy: 2.4, Cactus: 3.0, Snowman: 2.8, Penguin: 3.2, Lizard: 4.6, Firebird: 5.4, EvilEye: 4.4, DarkKnight: 3.6 }[m.kind] || 4.0;
       if (!inSafe && this.safeT <= 0 && dist < (this.inField ? 15 : 11) && !m.leaving) {
         m.state = 'chase';
         sp = fast;

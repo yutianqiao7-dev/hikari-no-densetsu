@@ -382,6 +382,160 @@ export class Story {
     if (lines.length) await this.say(lines);
   }
 
+
+  // ================================================================ 第二部：竜とめぐる五つの島
+  /** 魔竜を倒した直後：やみが抜けて正気に戻ったヴァルザードが語る */
+  async dragonAwakens() {
+    const g = this.g, f = this.f, d = f.boss;
+    await this.begin();
+    d.root.visible = true;
+    d.lunge = 0;
+    d.flash = 0;
+    const p = d.root.position.clone();
+    this.cam(p.clone().add(V(-10, 5, 12)), p.clone().add(V(0, 4, 0)), 1.2);
+    g.audio.play('field_night', { fade: 2 });
+    await sleep(800);
+    for (let k = 0; k < 6; k++) {
+      g.fx.emit({ pos: p.clone().add(V(0, 3 + k * 0.4, 0)), count: 40, color: [0x301050, 0x8040ff, 0x000000], speed: 2, up: 3, life: 1.6, size: 0.8, spread: 2.5, drag: 0.6 });
+      await sleep(180);
+    }
+    g.ui.flashScreen('#ffffff', 900, 0.8);
+    g.audio.sfx('light');
+    await this.say([{ text: 'まりゅうの からだから くろい きりが ぬけていく……。' }]);
+    this.cam(p.clone().add(V(-5, 3.5, 9)), p.clone().add(V(0, 4.6, -1)), 1.5);
+    await this.say([
+      { who: 'ヴァルザード', text: '……ここは……。 わしは いったい、 なにを していたのだ……。' },
+      { who: 'ヴァルザード', text: 'そうか。 わしは ながい あいだ、 やみに こころを しばられて いたのだな。' },
+      { who: 'ヴァルザード', text: 'わしを あやつっていたのは 「混沌王ゼノス」。 みなみの うみの はてに うかぶ 「闇の島」の あるじだ。' },
+      { who: 'ヴァルザード', text: 'ゼノスは ひがしの 灼砂の島、 きたの 氷雪の島、 にしの 炎獄の島 —— 三つの しまの せいれいを とらえ、 その ちからで 闇の島に けっかいを はっておる。' },
+      { who: 'ヴァルザード', text: 'せいれいを ときはなち、 三つの 「せいれいの ほうじゅ」を あつめれば、 けっかいは やぶれよう。' },
+      { who: 'ヴァルザード', text: 'ゆうしゃよ。 わびの しるしに、 わが つばさを かそう。 わしの せなかに のれ。 どの しまへでも つれていこう。' },
+    ]);
+    const ids = g.state.party.map((m) => m.id);
+    const lines = [];
+    if (ids.includes('milia')) lines.push({ who: 'ミリア', text: 'りゅうの せなかに のれるの！？ すごい すごい！' });
+    if (ids.includes('gald')) lines.push({ who: 'ガルド', text: 'まさか 魔竜と 手を くむ ことに なるとはな……。 だが わるくない。' });
+    if (ids.includes('serena')) lines.push({ who: 'セレナ', text: 'せいれいたちの なげきが きこえます。 たすけに いきましょう。' });
+    if (lines.length) await this.say(lines);
+    this.running = false;
+    g.cine = null;
+  }
+
+  /** 第二部のはじまり（城の前。竜が待っている） */
+  async sequelStart() {
+    const g = this.g, f = this.f;
+    await this.begin();
+    g.parkDragonNear();
+    const fp = g.flight.parked.pos;
+    this.cam(fp.clone().add(V(-12, 7, 14)), fp.clone().add(V(0, 3, 0)), 1.2);
+    await sleep(600);
+    await this.say([
+      { text: '—— そして、 あたらしい たびが はじまる。' },
+      { who: 'ヴァルザード', text: 'まずは ひがしの 灼砂の島へ むかうがよい。 つかれたら いつでも わしを よべ。' },
+      { text: '（ちかくの ヴァルザードに はなしかけるか、 MENU の 「ドラゴン」で のることが できます）' },
+      { text: '（そらの うえでは スティックで せんかい、 しまの うえで A を おすと おりられます。 MENU で うみの ちず）' },
+    ]);
+    this.end();
+  }
+
+  /** 島に はじめて おりたとき */
+  async onLand(id) {
+    const g = this.g, fl = this.flags;
+    if (fl['land_' + id] || id === 'main') return;
+    fl['land_' + id] = true;
+    const T = {
+      desert: [{ text: '（あつい かぜが すなを まきあげる。 ここは 灼砂の島 サンドラ。）' },
+        { who: 'ヴァルザード', text: 'すなの せいれいは ファラオの ピラミッドの おくに とらわれておる。 まずは オアシスの町で ようすを きくがよい。' }],
+      ice: [{ text: '（はく いきが しろい。 ここは 氷雪の島 フロスティア。）' },
+        { who: 'ヴァルザード', text: 'きたの こおりの きゅうでんから、 こおりの せいれいの けはいが する。 さむさで たおれるでないぞ。' }],
+      volcano: [{ text: '（じめんの したで マグマが うなっている。 ここは 炎獄の島 ボルカニア。）' },
+        { who: 'ヴァルザード', text: 'ほのおの せいれいは ひのやまの どうくつの おく。 かじやの里で そうびを ととのえよ。' }],
+      dark: [{ text: '（そらが くらい……。 ここが 混沌王の すむ 闇の島 ネクロス。）' },
+        { who: 'ヴァルザード', text: 'ゼノスは しまの きたの こんとんの しろに いる。 ちかくに ひとの けはい…… レジスタンスの 砦が あるようだ。' }],
+    }[id];
+    if (!T) return;
+    g.mode = 'cutscene';
+    await this.say(T);
+    if (g.mode === 'cutscene') g.mode = 'field';
+  }
+
+  /** 島のボスを倒した：せいれいが解き放たれ、ほうじゅを授かる */
+  async spiritEvent(id) {
+    const g = this.g, s = g.state, f = this.f;
+    await this.begin();
+    const info = {
+      desert: { name: 'すなの せいれい', orb: 'すなの ほうじゅ', col: 0xffd27a, cols: [0xffd27a, 0xffffff, 0xffa040] },
+      ice: { name: 'こおりの せいれい', orb: 'こおりの ほうじゅ', col: 0x9fe0ff, cols: [0x9fe0ff, 0xffffff, 0x60a0ff] },
+      volcano: { name: 'ほのおの せいれい', orb: 'ほのおの ほうじゅ', col: 0xff8a30, cols: [0xff8a30, 0xffe0a0, 0xff4010] },
+    }[id];
+    const p = f.pos.clone().add(V(Math.sin(f.facing) * 4, 1.8, Math.cos(f.facing) * 4));
+    const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 3), new THREE.MeshStandardMaterial({ color: info.col, emissive: info.col, emissiveIntensity: 3, roughness: 0.2 }));
+    orb.position.copy(p);
+    g.scene.add(orb);
+    const tick = (dt) => { orb.rotation.y += dt; orb.position.y = p.y + Math.sin(performance.now() / 400) * 0.15; g.fx.flashLight(orb.position, info.col, 40, 0.1); };
+    g.tickers.add(tick);
+    this.cam(f.pos.clone().add(V(Math.sin(f.facing + 2.4) * 7, 4, Math.cos(f.facing + 2.4) * 7)), p, 1.5);
+    g.audio.sfx('light');
+    g.fx.emit({ pos: p, count: 160, color: info.cols, speed: 2, up: 1.5, life: 1.8, size: 0.35, spread: 1.4, flicker: 15 });
+    await this.say([
+      { who: info.name, text: '……ありがとう、 ひかりの ものたち。 ゼノスの くさりから ときはなたれました。' },
+      { who: info.name, text: 'わたしの ちからを この 「ほうじゅ」に こめます。 どうか こんとんを とめてください。' },
+    ]);
+    s.flags['orb_' + id] = true;
+    await g.audio.jingle('levelup', g.fieldMusic());
+    await this.say(`${s.name}は 「${info.orb}」を てにいれた！`);
+    g.tickers.delete(tick);
+    g.scene.remove(orb);
+    const n = ['desert', 'ice', 'volcano'].filter((k) => s.flags['orb_' + k]).length;
+    if (n >= 3) {
+      s.flags.darkOpen = true;
+      g.ui.flashScreen('#c080ff', 900, 0.6);
+      await this.say([{ text: 'みっつの ほうじゅが ひびきあい、 まばゆい ひかりを はなった！' }, { text: '（みなみの 闇の島の けっかいが きえた きが する……！）' }]);
+    } else {
+      await this.say([{ text: `（のこる ほうじゅは あと ${3 - n}つ。 ヴァルザードの もとへ もどろう。）` }]);
+    }
+    this.end();
+  }
+
+  /** 最後の戦いの前 */
+  async beforeZenos() {
+    const ids = this.g.state.party.map((m) => m.id);
+    const lines = [{ who: this.g.state.name, text: '（みんなの ひかりを ひとつに……！）' }];
+    if (ids.includes('milia')) lines.push({ who: 'ミリア', text: 'こんとんなんかに まけない。 わたしたちの せかいは わたしたちが まもる！' });
+    if (ids.includes('gald')) lines.push({ who: 'ガルド', text: 'ヴァルザードの ぶんまで、 きっちり おとしまえを つけてやる！' });
+    if (ids.includes('serena')) lines.push({ who: 'セレナ', text: 'せいれいたちよ…… さいごの ちからを！' });
+    await this.say(lines);
+  }
+
+  /** ゼノスを倒した */
+  async finalEnding() {
+    const g = this.g, ui = g.ui;
+    await this.begin();
+    const z = this.f.ibossObj && this.f.ibossObj.root.visible ? this.f.ibossObj : null;
+    await this.say([
+      { who: 'ゼノス', text: 'ばかな…… ひかりが…… こんとんを こえる だと……。' },
+      { who: 'ゼノス', text: '……おぼえておけ。 ひかりが あるかぎり、 やみも また きえは しないのだ……。' },
+    ]);
+    if (z) z.root.visible = false;
+    g.ui.flashScreen('#ffffff', 1600, 1);
+    g.audio.sfx('roar');
+    await this.say([{ text: 'こんとんの しろが くずれはじめた！' }, { who: 'ヴァルザード', text: 'ゆうしゃよ、 こっちだ！ わが せなかに！' }]);
+    await ui.fadeTo(1, 1400);
+    this.running = false;
+    g.cine = null;
+    await g.finale();
+  }
+
+  /** 最後のエンディングで語られる仲間のその後 */
+  finalEpilogue() {
+    const ids = this.g.state.party.map((m) => m.id);
+    const out = [{ who: 'ヴァルザード', text: 'わしは この そらから せかいを みまもろう。 よぶ こえが あれば、 いつでも かけつける。' }];
+    if (ids.includes('milia')) out.push({ who: 'ミリア', text: 'わたし、 せかいいちの まほうつかいに なる！ そのときは また いっしょに たびしようね！' });
+    if (ids.includes('gald')) out.push({ who: 'ガルド', text: 'おれは 騎士団に もどるぜ。 この 国も、 竜の とぶ そらも、 おれが まもる。' });
+    if (ids.includes('serena')) out.push({ who: 'セレナ', text: 'せいれいたちと ともに、 ひかりの神殿を たてなおします。' });
+    return out;
+  }
+
   /** エンディングで語られる仲間のその後 */
   epilogue() {
     const ids = this.g.state.party.map((m) => m.id);

@@ -360,7 +360,7 @@ class Game {
   }
 
   fieldMusic() {
-    if (!this.field.inField) return { cave: 'cave', tower: 'tower', castle: 'castle', room: 'town' }[this.field.env.style] || 'town';
+    if (!this.field.inField) return { cave: 'cave', tower: 'tower', castle: 'castle', room: 'town', pyramid: 'ruins', icecave: 'icecave', lava: 'lavacave', darkcastle: 'darkcastle' }[this.field.env.style] || 'town';
     const a = this.field.area;
     const ar = a && this.world.areas[a];
     if (ar && ar.music) return ar.music;
@@ -622,6 +622,8 @@ class Game {
       'cave1:D': ['cave2', 'U'], 'cave2:U': ['cave1', 'D'],
       'tower1:U': ['tower2', 'D'], 'tower2:D': ['tower1', 'U'],
       'tower2:U': ['tower3', 'D'], 'tower3:D': ['tower2', 'U'],
+      'pyr1:D': ['pyr2', 'U'], 'pyr2:U': ['pyr1', 'D'], 'ice1:D': ['ice2', 'U'], 'ice2:U': ['ice1', 'D'],
+      'lava1:D': ['lava2', 'U'], 'lava2:U': ['lava1', 'D'], 'dark1:D': ['dark2', 'U'], 'dark2:U': ['dark1', 'D'],
     };
     if (c === 'S') { await this.exitToField(this.field.env.exit); return; }
     const to = links[`${id}:${c}`];
@@ -710,18 +712,27 @@ class Game {
     }
     if (!this._black) this._black = new THREE.Color(0, 0, 0);
     this.scene.background = this._black;
-    this.scene.fog.color.setRGB(cave ? 0.03 : 0.03, cave ? 0.028 : 0.022, cave ? 0.026 : 0.045);
+    // ダンジョンの種類ごとの光（霧の色・環境光・色調）
+    const P = {
+      cave: { fog: [0.03, 0.028, 0.026], hemi: [0.72, 0.7, 0.78], tint: [1.03, 1.0, 0.96] },
+      tower: { fog: [0.03, 0.022, 0.045], hemi: [0.66, 0.58, 0.86], tint: [1.02, 0.97, 1.04] },
+      pyramid: { fog: [0.06, 0.045, 0.025], hemi: [0.85, 0.72, 0.55], tint: [1.06, 1.0, 0.9] },
+      icecave: { fog: [0.04, 0.07, 0.1], hemi: [0.62, 0.78, 1.0], tint: [0.95, 1.0, 1.08] },
+      lava: { fog: [0.08, 0.025, 0.01], hemi: [0.9, 0.5, 0.35], tint: [1.1, 0.96, 0.88] },
+      darkcastle: { fog: [0.05, 0.02, 0.06], hemi: [0.9, 0.74, 1.08], tint: [1.03, 0.96, 1.06] },
+    }[this.field.env.style] || { fog: [0.03, 0.028, 0.026], hemi: [0.72, 0.7, 0.78], tint: [1.03, 1.0, 0.96] };
+    this.scene.fog.color.setRGB(...P.fog);
     this.scene.fog.density = cave ? 0.02 : 0.018;
     sky.sun.intensity = 0;
     sky.sun.castShadow = false;
-    sky.hemi.color.setRGB(cave ? 0.72 : 0.66, cave ? 0.7 : 0.58, cave ? 0.78 : 0.86);
+    sky.hemi.color.setRGB(...P.hemi);
     sky.hemi.groundColor.setRGB(0.22, 0.18, 0.15);
-    sky.hemi.intensity = cave ? 1.35 : 1.35;
+    sky.hemi.intensity = 1.35;
     this.scene.environmentIntensity = 0.3;
     this.renderer.r.toneMappingExposure = 1.05;
     const gu = this.renderer.grade.uniforms;
     gu.uSaturation.value = 1.08;
-    gu.uTint.value.set(cave ? 1.03 : 1.02, cave ? 1.0 : 0.97, cave ? 0.96 : 1.04);
+    gu.uTint.value.set(...P.tint);
     gu.uVignette.value = 0.4;
   }
 
@@ -828,10 +839,39 @@ class Game {
     await this.ui.fadeTo(0, 700);
   }
 
+  /** スタッフロール（ms 表示して消える） */
+  async rollCredits(html, ms) {
+    const end = document.createElement('div');
+    end.id = 'ending';
+    end.innerHTML = `<div class="roll" style="animation-duration:${Math.round(ms / 1000) - 1}s">${html}</div>`;
+    this.uiRoot.appendChild(end);
+    this.hud.setVisible(false);
+    await sleep(ms);
+    end.style.transition = 'opacity 2s';
+    end.style.opacity = 0;
+    await sleep(2000);
+    end.remove();
+  }
+
+  creditsCommon() {
+    const s = this.state;
+    return `<h2>ゆうしゃ</h2>${s.name}
+      ${s.party.length > 1 ? `<h2>なかま</h2>${s.party.slice(1).map((m) => memberName(s, m)).join('<br>')}` : ''}
+      <h2>フィールド・モデル</h2>Blender（Python スクリプトで生成）
+      <h2>キャラクター</h2>メタボール造形・スキニング・アニメーション
+      <h2>グラフィックス</h2>Three.js / WebGL
+      <h2>おんがく・こうかおん</h2>オリジナル（WebAudio シンセサイザー）
+      <h2>プレイじかん</h2>${Math.floor(s.playTime / 3600)}じかん ${Math.floor((s.playTime % 3600) / 60)}ふん
+      <h2>レベル</h2>${s.party.map((m) => `${memberName(s, m)}　Lv ${m.lv}`).join('<br>')}`;
+  }
+
+  /** 第一部のおわり（魔竜を倒した）→ 第二部へ */
   async ending() {
     const ui = this.ui, s = this.state;
     this.mode = 'cutscene';
     s.flags.cleared = true;
+    await this.story.dragonAwakens();
+    this.mode = 'cutscene';
     await ui.fadeTo(1, 2000);
     this.field.clearMonsters();
     await this.toKing();
@@ -844,36 +884,64 @@ class Game {
     await ui.say([
       { who: '王さま', text: `おお ${s.name}！ よくぞ もどった！` },
       { who: '王さま', text: 'まおうの塔を おおっていた やみは きえ、 せかいに ふたたび ひかりが さしこんだ。' },
-      { who: '王さま', text: s.party.length > 1 ? 'そなたたちこそ まことの ゆうしゃ。 この国の ほこりじゃ。 ほんとうに ありがとう。' : 'そなたこそ まことの ゆうしゃ。 この国の ほこりじゃ。 ほんとうに ありがとう。' },
+      { who: '王さま', text: 'なんと…… 魔竜は やみに あやつられていた だけで、 いまは そなたたちの みかただと？' },
+      { who: '王さま', text: '混沌王ゼノス……。 せかいの ききは まだ おわっておらぬ ようじゃな。' },
+      { who: '王さま', text: s.party.length > 1 ? 'ゆうしゃたちよ、 竜と ともに うみを わたり、 こんとんを うちはらってくれ！' : 'ゆうしゃよ、 竜と ともに うみを わたり、 こんとんを うちはらってくれ！' },
     ]);
-    const epi = this.story.epilogue();
-    if (epi.length) await ui.say(epi);
-    const end = document.createElement('div');
-    end.id = 'ending';
-    end.innerHTML = `<div class="roll">
-      <h1>ひかりの伝説</h1>
-      <h2>ゆうしゃ</h2>${s.name}
-      ${s.party.length > 1 ? `<h2>なかま</h2>${s.party.slice(1).map((m) => memberName(s, m)).join('<br>')}` : ''}
-      <h2>フィールド・モデル</h2>Blender（Python スクリプトで生成）
-      <h2>キャラクター</h2>メタボール造形・スキニング・アニメーション
-      <h2>グラフィックス</h2>Three.js / WebGL
-      <h2>おんがく・こうかおん</h2>オリジナル（WebAudio シンセサイザー）
-      <h2>プレイじかん</h2>${Math.floor(s.playTime / 3600)}じかん ${Math.floor((s.playTime % 3600) / 60)}ふん
-      <h2>レベル</h2>${s.party.map((m) => `${memberName(s, m)}　Lv ${m.lv}`).join('<br>')}
-      <br><br><br><h1>おわり</h1>
-      <div style="font-size:16px">ありがとう ございました</div></div>`;
-    this.uiRoot.appendChild(end);
-    this.hud.setVisible(false);
-    await sleep(43000);
-    end.style.transition = 'opacity 2s';
-    end.style.opacity = 0;
-    await sleep(2000);
-    end.remove();
-    save(this.snapshot());
+    await this.rollCredits(`<h1>ひかりの伝説</h1>${this.creditsCommon()}
+      <br><br><br><h1>第一部 おわり</h1>
+      <div style="font-size:16px">そして 竜とともに、 あらたな たびが はじまる——</div>`, 36000);
+    s.flags.sequel = true;
     this.hud.setVisible(true);
     this.mode = 'field';
     this.field.area = undefined;
-    await ui.say('（ぼうけんを きろくしました。 ひきつづき せかいを たんさく できます）');
+    // 城の前に出て、竜が待っている
+    if (!this.field.inField) this.leaveInterior();
+    const st = this.world.marker('Start');
+    this.field.place(st.pos, st.rot);
+    this.updateMusic(true);
+    await this.story.sequelStart();
+    save(this.snapshot());
+    await ui.say('（ぼうけんを きろくしました）');
+  }
+
+  /** 第二部のおわり（混沌王ゼノスを倒した） */
+  async finale() {
+    const ui = this.ui, s = this.state;
+    this.mode = 'cutscene';
+    s.flags.cleared2 = true;
+    this.field.clearMonsters();
+    await this.toKing();
+    this.mode = 'cutscene';
+    this.sky.time = 0.42;
+    this.sky.envTimer = 999;
+    this.audio.play('ending');
+    await sleep(600);
+    await ui.fadeTo(0, 2000);
+    await ui.say([
+      { who: '王さま', text: `${s.name}！ そして ゆうかんなる なかまたちよ！` },
+      { who: '王さま', text: 'こんとんは うちはらわれ、 五つの しまに ひかりが もどった。 せいれいたちも よろこんで おろう。' },
+      { who: '王さま', text: 'そなたたちこそ まことの ゆうしゃ。 その なは この せかいの すみずみまで かたりつがれよう。' },
+    ]);
+    const epi = this.story.finalEpilogue();
+    if (epi.length) await ui.say(epi);
+    await this.rollCredits(`<h1>ひかりの伝説</h1>
+      <h2>第二部</h2>竜とめぐる 五つの島
+      ${this.creditsCommon()}
+      <h2>めぐった しま</h2>アルセリア島<br>灼砂の島 サンドラ<br>氷雪の島 フロスティア<br>炎獄の島 ボルカニア<br>闇の島 ネクロス
+      <h2>ともに とんだ 竜</h2>ヴァルザード
+      <br><br><br><h1>完</h1>
+      <div style="font-size:16px">ありがとう ございました</div>`, 48000);
+    this.hud.setVisible(true);
+    this.mode = 'field';
+    this.field.area = undefined;
+    if (!this.field.inField) this.leaveInterior();
+    const st = this.world.marker('Start');
+    this.field.place(st.pos, st.rot);
+    this.parkDragonNear();
+    this.updateMusic(true);
+    save(this.snapshot());
+    await ui.say('（ぼうけんを きろくしました。 ひきつづき 五つの しまを たんさく できます）');
   }
 }
 

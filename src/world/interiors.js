@@ -91,9 +91,15 @@ class Floor {
   }
 
   encounter() {
-    return this.style === 'cave'
-      ? { lv: 4, list: ['bat', 'bat_dark', 'mushroom_poison', 'golem', 'ghost', 'purun_red', 'skeleton', 'snake_cobra', 'wisp'] }
-      : { lv: 6, list: ['ghost_blue', 'golem', 'bat_dark', 'ghost', 'skeleton_dark', 'gargoyle', 'wisp_blue', 'skeleton_dark', 'gargoyle'] };
+    const T = {
+      cave: { lv: 4, list: ['bat', 'bat_dark', 'mushroom_poison', 'golem', 'ghost', 'purun_red', 'skeleton', 'snake_cobra', 'wisp'] },
+      tower: { lv: 6, list: ['ghost_blue', 'golem', 'bat_dark', 'ghost', 'skeleton_dark', 'gargoyle', 'wisp_blue', 'skeleton_dark', 'gargoyle'] },
+      pyramid: { lv: 23, list: ['mummy', 'mummy', 'scorpion', 'sandsnake', 'mummy', 'wisp'] },
+      icecave: { lv: 29, list: ['icewraith', 'penguin', 'icewolf', 'snowman', 'icewraith'] },
+      lava: { lv: 35, list: ['salamander', 'magmagolem', 'flamewisp', 'firebird', 'lavapurun'] },
+      darkcastle: { lv: 42, list: ['darkknight', 'skeleton_king', 'shadow', 'gargoyle_dark', 'evileye', 'darkknight'] },
+    };
+    return T[this.style] || T.tower;
   }
 
   /** モンスターの出現位置（プレイヤーから離れた床） */
@@ -161,7 +167,7 @@ export class Interiors {
     if (!f) return;
     // ランタン
     this.lantern.position.set(heroPos.x, heroPos.y + 2.4, heroPos.z);
-    this.lantern.intensity = f.indoor ? 0 : (f.style === 'cave' ? 18 : 13) + Math.sin(t * 7) * 0.6;
+    this.lantern.intensity = f.indoor ? 0 : ({ cave: 18, icecave: 12, lava: 10, pyramid: 14, darkcastle: 15 }[f.style] || 13) + Math.sin(t * 7) * 0.6;
     // 光源（かがり火・水晶・出口の光）を近い順に
     this.assignT -= dt;
     if (this.assignT <= 0) {

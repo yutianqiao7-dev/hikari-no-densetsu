@@ -134,7 +134,7 @@ function kindOf(name) {
   if (name === 'WoodFloor') return 'planks';
   if (/^(Wood|WoodDark|Bark|Door|LogWood|LogWoodDark)$/.test(name)) return 'wood';
   if (/^(Plaster|Adobe|AdobeDark)$/.test(name)) return 'plaster';
-  if (/^(Carpet|TowerCarpet)$/.test(name)) return 'fabric';
+  if (/^(Carpet|TowerCarpet|RoyalCarpet|ChaosCarpet)$/.test(name)) return 'fabric';
   return null;
 }
 
