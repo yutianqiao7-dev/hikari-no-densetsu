@@ -6,6 +6,9 @@ export const CUT = {
   uCutCam: { value: new THREE.Vector3() },
   uCutTarget: { value: new THREE.Vector3() },
   uCutOn: { value: 0 },
+  uCutR: { value: 3.2 },      // カメラ→注目点の線からこの距離までの壁を消す
+  uCutNear: { value: 1.6 },   // カメラのすぐ近くの壁も消す
+  uCutTop: { value: 0 },      // 注目点よりこれ以上高い所を近くだけ消す（0 で無効）
 };
 
 /**
@@ -114,8 +117,13 @@ const CUT_GLSL = /* glsl */`
       vec3 ab = uCutTarget - uCutCam;
       float tt = clamp(dot(vW - uCutCam, ab) / dot(ab, ab), 0.0, 1.0);
       float dd = length(vW - (uCutCam + ab * tt));
-      float dith = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
-      if (tt < 0.96 && dd < 3.2 && dith > smoothstep(3.2, 2.2, dd) * -1.0 + 1.0) discard;
+      // 規則的なディザ（ノイズより半透明らしく見える）
+      ivec2 bi = ivec2(mod(gl_FragCoord.xy, 4.0));
+      float dith = (float[16](0., 8., 2., 10., 12., 4., 14., 6., 3., 11., 1., 9., 15., 7., 13., 5.)[bi.x + bi.y * 4] + 0.5) / 16.0;
+      float kc = max(step(tt, 0.96) * smoothstep(uCutR, uCutR - 1.2, dd), smoothstep(uCutNear, uCutNear - 1.0, length(vW - uCutCam)));
+      // 勇者のまわりの高い壁（見下ろすカメラの邪魔）も上から削る
+      if (uCutTop > 0.0) kc = max(kc, smoothstep(uCutTop, uCutTop + 0.8, vW.y - uCutTarget.y) * smoothstep(13.0, 9.0, length(vW.xz - uCutTarget.xz)));
+      if (dith < kc) discard;
     }
 `;
 
@@ -148,7 +156,7 @@ uniform vec4 uHFp;
 float uGround(vec3 p) { return texture2D(uHeightT, ((p.xz + uHFp.x) / uHFp.y + 0.5) / uHFp.z).r; }`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${cut ? CUT_GLSL : ''}\n${PATTERNS[kind]}`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= vRough;');
-    if (cut) sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uCutCam;\nuniform vec3 uCutTarget;\nuniform float uCutOn;');
+    if (cut) sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uCutCam;\nuniform vec3 uCutTarget;\nuniform float uCutOn;\nuniform float uCutR;\nuniform float uCutNear;\nuniform float uCutTop;');
   };
   mat.customProgramCacheKey = () => 'surface-' + kind + (cut ? '-cut' : '');
   mat.needsUpdate = true;

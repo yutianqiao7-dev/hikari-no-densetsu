@@ -180,16 +180,18 @@ export class Story {
     const g = this.g, f = this.f;
     await this.begin();
     this.flags.ev_village = true;
-    const plaza = V(140, 0, 110);
-    const milia = this.stageHumanoid(f.followers.milia, plaza.clone().add(V(0, 0, -2.5)), Math.PI);
+    // 広場の井戸（中央）がカメラの邪魔にならないよう、東側の開けた所で起こる。P は「前＝東」の座標系
+    const E = V(153, 0, 110);
+    const P = (x, y, z) => { const v = E.clone().add(V(-z, 0, x)); v.y = f.env.height(v.x, v.z) + y; return v; };
+    const milia = this.stageHumanoid(f.followers.milia, P(0, 0, -2.5), Math.PI / 2);
     const mons = [
-      this.stageMonster('purun', plaza.clone().add(V(-2.8, 0, -5.6)), milia.root.position),
-      this.stageMonster('purun_red', plaza.clone().add(V(2.8, 0, -5.4)), milia.root.position),
-      this.stageMonster('purun', plaza.clone().add(V(0, 0, -6.6)), milia.root.position),
+      this.stageMonster('purun', P(-2.8, 0, -5.6), milia.root.position),
+      this.stageMonster('purun_red', P(2.8, 0, -5.4), milia.root.position),
+      this.stageMonster('purun', P(0, 0, -6.6), milia.root.position),
     ];
     this.face(milia, mons[2].root.position);
     g.audio.play('battle', { fade: 0.3 });
-    this.cam(plaza.clone().add(V(9, 6, 6)), plaza.clone().add(V(0, 1, -3)), 2.5);
+    this.cam(P(9, 6, 6), P(0, 1, -3), 2.5);
     await this.say([{ text: '（むらの ひろばの ほうから ひめいが きこえる！）' }]);
     await this.say([{ who: '？？？', text: 'こないで！ こないでったら！' }]);
     milia.play('Cast', { timeScale: 1.3 });
@@ -201,8 +203,8 @@ export class Story {
     mons[0].hitFlash();
     await this.say([{ who: '？？？', text: 'ファイア！ ……うそ、 ぜんぜん きいてない！？' }]);
     // 勇者がかけつける
-    this.cam(plaza.clone().add(V(-7, 5, 9)), plaza.clone().add(V(0, 1, -1)), 2);
-    await this.walk(f.hero, plaza.clone().add(V(0.2, 0, 0.6)), 5.5);
+    this.cam(P(-7, 5, 9), P(0, 1, -1), 2);
+    await this.walk(f.hero, P(0.2, 0, 0.6), 5.5);
     this.face(f.hero, mons[2].root.position);
     f.pos.copy(f.hero.root.position);
     f.facing = f.hero.root.rotation.y;
@@ -222,7 +224,7 @@ export class Story {
     this.stageHumanoid(mi, f.pos.clone().add(V(1.4, 0, 0)), Math.PI);
     const elder = new Humanoid(g.world.lib, 'Elder');
     g.scene.add(elder.root);
-    this.stageHumanoid(elder, plaza.clone().add(V(-9, 0, 6)), 0);
+    this.stageHumanoid(elder, P(-9, 0, 6), -Math.PI / 2);
     this.staged[this.staged.length - 1].temp = true;
     this.cam(f.pos.clone().add(V(4, 4, 7)), f.pos.clone().add(V(-1, 1, 0)), 2);
     await this.walk(elder, f.pos.clone().add(V(-1.4, 0, 1.6)), 1.6);
@@ -253,6 +255,7 @@ export class Story {
     this.flags.ev_gald = true;
     const cave = g.world.marker('CaveEntrance').pos;
     const spot = cave.clone().add(V(0, 0, 11));
+    spot.y = f.env.height(spot.x, spot.z);
     const gald = this.stageHumanoid(f.followers.gald, spot.clone(), Math.PI);
     const mons = [
       this.stageMonster('golem', spot.clone().add(V(-1.6, 0, -4.6)), spot),

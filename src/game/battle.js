@@ -45,6 +45,11 @@ export class Battle {
       if (dir.lengthSq() < 0.01) dir.set(Math.sin(f.facing), 0, Math.cos(f.facing));
       dir.normalize();
     } else dir = V(Math.sin(f.facing), 0, Math.cos(f.facing));
+    if (!f.inField && !boss) {
+      const best = this.roomyLine(heroPos, dir);
+      heroPos.copy(best.p);
+      dir = best.d;
+    }
     heroPos.y = env.height(heroPos.x, heroPos.z);
     this.dir = dir;
     this.right = V(dir.z, 0, -dir.x);
@@ -55,12 +60,23 @@ export class Battle {
     // 味方の隊列（横一列、中央が少し前）
     const party = this.s.party;
     const n = party.length;
-    const gap = f.inField ? 1.8 : 1.45;
+    let gap = f.inField ? 1.8 : 1.45;
+    // 屋内のせまい通路では横一列に入りきらないので、間をつめるか2列にする
+    let rows = 1;
+    if (!f.inField && n > 1) {
+      const halfW = Math.min(this.freeDist(heroPos, this.right, 4), this.freeDist(heroPos, this.right.clone().negate(), 4));
+      const fit = (halfW - 0.45) * 2 / (n - 1);
+      if (fit < 1.0) rows = 2;
+      else gap = Math.min(gap, fit);
+      if (rows === 2) gap = Math.max(0.9, Math.min(1.3, (halfW - 0.4) * 2 / (Math.ceil(n / 2) - 1 || 1)));
+    }
+    const perRow = rows === 2 ? Math.ceil(n / 2) : n;
     party.forEach((m, i) => {
       const h = i === 0 ? f.hero : f.followerOf(m.id);
       if (!h) return;
-      const lat = (i - (n - 1) / 2) * gap;
-      const home = heroPos.clone().addScaledVector(this.right, lat).addScaledVector(dir, -Math.abs(lat) * 0.25);
+      const row = Math.floor(i / perRow), col = i % perRow, cnt = row === 0 ? perRow : n - perRow;
+      const lat = (col - (cnt - 1) / 2) * gap + (row === 1 ? gap * 0.25 : 0);
+      const home = heroPos.clone().addScaledVector(this.right, lat).addScaledVector(dir, -Math.abs(lat) * 0.25 - row * 1.7);
       home.y = env.height(home.x, home.z);
       h.root.visible = true;
       h.root.position.copy(home);
@@ -90,7 +106,11 @@ export class Battle {
       const front = (f.inField ? 6.6 : 5.6) + (ne > 3 ? 1 : 0);
       keys.forEach((k, i) => {
         const lat = (i - (ne - 1) / 2) * (f.inField ? 2.8 : 2.1);
-        const p = heroPos.clone().addScaledVector(dir, front + Math.abs(lat) * 0.22).addScaledVector(this.right, lat);
+        let p;
+        for (let k = 1; k > 0.2; k -= 0.15) {
+          p = heroPos.clone().addScaledVector(dir, (front + Math.abs(lat) * 0.22) * (0.7 + 0.3 * k)).addScaledVector(this.right, lat * k);
+          if (f.inField || this.clearAt(p, 0.9)) break;
+        }
         p.y = env.height(p.x, p.z);
         const mon = new Monster(this.g.world.lib, MONSTERS[k]);
         mon.root.position.copy(p);
@@ -114,6 +134,58 @@ export class Battle {
     const rad = this.center.distanceTo(this.center0) * 0.5 + (boss === 'dragon' ? 22 : 15);
     this.g.world.veg.setExclude(mid, rad);
     this.fitCam = this.g.camera.clone();
+  }
+
+  /** p から向き d へ歩ける距離（屋内用） */
+  freeDist(p, d, max) {
+    const env = this.f.env;
+    let s = 0;
+    while (s < max && env.walkable(p.x + d.x * (s + 0.25), p.z + d.z * (s + 0.25))) s += 0.25;
+    return s;
+  }
+
+  /** 半径 r の円が床の上に収まるか（屋内用） */
+  clearAt(p, r) {
+    const env = this.f.env;
+    if (!env.walkable(p.x, p.z)) return false;
+    for (let k = 0; k < 8; k++) {
+      const a = k / 8 * Math.PI * 2;
+      if (!env.walkable(p.x + Math.cos(a) * r, p.z + Math.sin(a) * r)) return false;
+    }
+    return true;
+  }
+
+  /** 屋内の戦闘：味方と敵が並べてカメラも引ける、いちばん広い向きと立ち位置を探す */
+  roomyLine(p0, d0) {
+    const env = this.f.env;
+    const free = (p, d, max) => {
+      let s = 0;
+      while (s < max && env.walkable(p.x + d.x * (s + 0.5), p.z + d.z * (s + 0.5))) s += 0.5;
+      return s;
+    };
+    const cands = [p0.clone()];
+    if (env.cell) {
+      const i = Math.floor((p0.x - env.ox) / env.cell), j = Math.floor((p0.z - env.oz) / env.cell);
+      const [cx, cz] = env.center(i, j);
+      cands.push(V(cx, p0.y, cz));
+    }
+    let best = { p: p0, d: d0, s: -1e9 };
+    for (const p of cands) {
+      if (!env.walkable(p.x, p.z)) continue;
+      for (let k = 0; k < 16; k++) {
+        const a = k / 16 * Math.PI * 2;
+        const d = V(Math.sin(a), 0, Math.cos(a));
+        const r = V(d.z, 0, -d.x);
+        const m = p.clone().addScaledVector(d, 6);
+        const ahead = Math.min(free(p, d, 11), 9);
+        const back = Math.min(free(p, d.clone().negate(), 6), 5);
+        const side = Math.min(free(m, r, 4), free(m, r.clone().negate(), 4));
+        const side0 = Math.min(free(p, r, 3), free(p, r.clone().negate(), 3));
+        const s = ahead + back * 0.8 + side * 1.3 + side0 * 0.8 + (d.dot(d0) > 0.9 ? 0.8 : 0) - p.distanceTo(p0) * 0.3;
+        if (s > best.s) best = { p, d, s };
+      }
+    }
+    return best;
   }
 
   /** 敵（と味方）の高さを含む注目点 */

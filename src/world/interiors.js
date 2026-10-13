@@ -133,7 +133,7 @@ export class Interiors {
       scene.add(l);
       this.lights.push(l);
     }
-    this.lantern = new THREE.PointLight(0xffc888, 0, 14, 1.5);
+    this.lantern = new THREE.PointLight(0xffd29a, 0, 24, 1.3);
     this.lantern.visible = false;
     scene.add(this.lantern);
     this.emitT = 0;
@@ -161,7 +161,7 @@ export class Interiors {
     if (!f) return;
     // ランタン
     this.lantern.position.set(heroPos.x, heroPos.y + 2.4, heroPos.z);
-    this.lantern.intensity = f.indoor ? 0 : (f.style === 'cave' ? 9 : 6) + Math.sin(t * 7) * 0.4;
+    this.lantern.intensity = f.indoor ? 0 : (f.style === 'cave' ? 18 : 13) + Math.sin(t * 7) * 0.6;
     // 光源（かがり火・水晶・出口の光）を近い順に
     this.assignT -= dt;
     if (this.assignT <= 0) {

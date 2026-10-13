@@ -8,8 +8,8 @@ const lerpC = (a, b, t) => a.clone().lerp(b, t);
 const C = (r, g, b) => new THREE.Color(r, g, b);
 const FOG_DAY = C(0.56, 0.70, 0.90), FOG_DUSK = C(0.95, 0.56, 0.36), FOG_NIGHT = C(0.05, 0.075, 0.16);
 const SUN_DAY = C(1.0, 0.95, 0.86), SUN_DUSK = C(1.0, 0.55, 0.28), MOON = C(0.62, 0.74, 1.0);
-const HEMI_SKY_DAY = C(0.62, 0.75, 1.0), HEMI_SKY_NIGHT = C(0.22, 0.30, 0.6);
-const HEMI_GND_DAY = C(0.36, 0.33, 0.22), HEMI_GND_NIGHT = C(0.06, 0.07, 0.1);
+const HEMI_SKY_DAY = C(0.62, 0.75, 1.0), HEMI_SKY_NIGHT = C(0.36, 0.46, 0.8);
+const HEMI_GND_DAY = C(0.36, 0.33, 0.22), HEMI_GND_NIGHT = C(0.14, 0.16, 0.22);
 
 /**
  * 空・太陽・月・星・霧・環境光（IBL）と昼夜サイクル
@@ -144,10 +144,10 @@ export class SkySystem {
     const isMoon = this.night > 0.5;
     const ldir = isMoon ? this.moonDir : this.sunDir;
     this.sun.color.copy(isMoon ? MOON : lerpC(SUN_DAY, SUN_DUSK, this.dusk));
-    this.sun.intensity = isMoon ? 1.9 * this.night : 3.4 * this.day * (1 - this.dusk * 0.35);
+    this.sun.intensity = isMoon ? 2.7 * this.night : 3.4 * this.day * (1 - this.dusk * 0.35);
     this.hemi.color.copy(lerpC(HEMI_SKY_NIGHT, HEMI_SKY_DAY, this.day)).lerp(FOG_DUSK, this.dusk * 0.3);
     this.hemi.groundColor.copy(lerpC(HEMI_GND_NIGHT, HEMI_GND_DAY, this.day));
-    this.hemi.intensity = 0.5 + this.day * 0.3;
+    this.hemi.intensity = 0.5 + this.day * 0.3 + this.night * 0.55;
 
     // 影のカメラをプレイヤー周辺に追従（テクセル単位にスナップしてちらつき防止）
     const r = this.q.shadowRange;
@@ -168,7 +168,7 @@ export class SkySystem {
       this.scene.environment = this.envRT.texture;
       if (old) old.dispose();
     }
-    this.scene.environmentIntensity = 0.3 + this.day * 0.35;
-    this.renderer.toneMappingExposure = 0.46 + this.night * 0.55 + this.dusk * 0.06;
+    this.scene.environmentIntensity = 0.3 + this.day * 0.35 + this.night * 0.2;
+    this.renderer.toneMappingExposure = 0.46 + this.night * 0.8 + this.dusk * 0.06;
   }
 }

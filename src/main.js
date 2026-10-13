@@ -164,15 +164,18 @@ class Game {
     this.sky.update(dt, focus, this.camera);
     // 時間帯の色調（夜は青く・彩度を落とす、夕方は暖色）
     const gu = this.renderer.grade.uniforms, sk = this.sky;
-    gu.uSaturation.value = 1.12 - sk.night * 0.45 + sk.dusk * 0.05;
+    gu.uSaturation.value = 1.12 - sk.night * 0.36 + sk.dusk * 0.05;
     gu.uVignette.value = 0.32;
-    gu.uTint.value.set(1 - sk.night * 0.22 + sk.dusk * 0.06, 1 - sk.night * 0.1, 1 + sk.night * 0.12 - sk.dusk * 0.08);
+    gu.uTint.value.set(1 - sk.night * 0.2 + sk.dusk * 0.06, 1 - sk.night * 0.07, 1 + sk.night * 0.16 - sk.dusk * 0.08);
     if (this.world.interiors.current) this.applyInteriorLighting();
     CUT.uCutOn.value = this.world.interiors.current ? 1 : 0;
     CUT.uCutCam.value.copy(this.camera.position);
     // 戦闘中はカメラが見ている所（戦いの中心）までの壁を透かす
     if (this.battle && this.battle.camLook) CUT.uCutTarget.value.copy(this.battle.camLook);
     else CUT.uCutTarget.value.copy(f.pos).y += 1.0;
+    CUT.uCutR.value = this.battle ? 4.4 : 3.2;
+    CUT.uCutNear.value = this.battle ? 3.6 : 1.6;
+    CUT.uCutTop.value = this.battle ? 0 : 1.2;
     this.world.update(dt, this.t, this.camera.position, f.pos);
     this.fx.update(dt);
     this.ambient(dt);
@@ -560,19 +563,19 @@ class Game {
     }
     if (!this._black) this._black = new THREE.Color(0, 0, 0);
     this.scene.background = this._black;
-    this.scene.fog.color.setRGB(cave ? 0.012 : 0.02, cave ? 0.011 : 0.012, cave ? 0.01 : 0.03);
-    this.scene.fog.density = cave ? 0.034 : 0.026;
+    this.scene.fog.color.setRGB(cave ? 0.03 : 0.03, cave ? 0.028 : 0.022, cave ? 0.026 : 0.045);
+    this.scene.fog.density = cave ? 0.02 : 0.018;
     sky.sun.intensity = 0;
     sky.sun.castShadow = false;
-    sky.hemi.color.setRGB(cave ? 0.35 : 0.4, cave ? 0.38 : 0.3, cave ? 0.5 : 0.6);
-    sky.hemi.groundColor.setRGB(0.06, 0.05, 0.05);
-    sky.hemi.intensity = cave ? 0.75 : 0.85;
-    this.scene.environmentIntensity = 0.12;
-    this.renderer.r.toneMappingExposure = 0.85;
+    sky.hemi.color.setRGB(cave ? 0.72 : 0.66, cave ? 0.7 : 0.58, cave ? 0.78 : 0.86);
+    sky.hemi.groundColor.setRGB(0.22, 0.18, 0.15);
+    sky.hemi.intensity = cave ? 1.35 : 1.35;
+    this.scene.environmentIntensity = 0.3;
+    this.renderer.r.toneMappingExposure = 1.05;
     const gu = this.renderer.grade.uniforms;
-    gu.uSaturation.value = 1.05;
-    gu.uTint.value.set(cave ? 1.04 : 1.02, cave ? 1.0 : 0.96, cave ? 0.95 : 1.06);
-    gu.uVignette.value = 0.55;
+    gu.uSaturation.value = 1.08;
+    gu.uTint.value.set(cave ? 1.03 : 1.02, cave ? 1.0 : 0.97, cave ? 0.96 : 1.04);
+    gu.uVignette.value = 0.4;
   }
 
   async openChest(c) {
