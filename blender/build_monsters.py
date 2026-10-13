@@ -1029,6 +1029,61 @@ def build_gargoyle(x):
 
 
 
+# ------------------------------------------------------------------ 棺桶（たおれた仲間）
+def build_coffin(x):
+    r = root("Mon_Coffin", x)
+    wood = mat("CoffinWood", (0.32, 0.18, 0.1), 0.6)
+    lid = mat("CoffinLid", (0.46, 0.27, 0.15), 0.55)
+    grain = mat("CoffinGrain", (0.26, 0.14, 0.08), 0.7)
+    iron = mat("CoffinIron", (0.2, 0.2, 0.22), 0.4, 0.8)
+    gold = mat("CoffinGold", (1.0, 0.78, 0.32), 0.3, 1.0)
+    P = [(-0.19, 0.0), (0.19, 0.0), (0.31, 1.18), (0.21, 1.72), (-0.21, 1.72), (-0.31, 1.18)]
+    D = 0.19
+
+    def prism(mb, pts, y0, y1, m, z0=0.0):
+        n = len(pts)
+        verts = [(px, y0, pz + z0) for px, pz in pts] + [(px, y1, pz + z0) for px, pz in pts]
+        faces = [tuple(range(n)), tuple(range(2 * n - 1, n - 1, -1))]
+        for i in range(n):
+            j = (i + 1) % n
+            faces.append((i, n + i, n + j, j))
+        mb.poly(verts, faces, m)
+
+    mb = CMB()
+    prism(mb, P, -D, D, wood)
+    bmesh.ops.recalc_face_normals(mb.bm, faces=mb.bm.faces[:])
+    body = mb.build("Mon_Coffin_Body", COLL, parent=r)
+
+    # ふたの板・縁取り・十字架・びょう（前後両面）
+    mb = CMB()
+    cx = sum(p[0] for p in P) / len(P)
+    cz = sum(p[1] for p in P) / len(P)
+    inset = [(cx + (px - cx) * 0.84, cz + (pz - cz) * 0.9) for px, pz in P]
+    for sgn in (-1, 1):
+        y_out = sgn * (D + 0.022)
+        prism(mb, inset, sgn * D, y_out, lid)
+        # 木目
+        for k in range(-3, 4):
+            xx = k * 0.055
+            mb.add('cube', grain, loc=(xx, y_out + sgn * 0.001, 0.86), scale=(0.006, 0.002, 1.35 - abs(k) * 0.08))
+        # 縁取り
+        ring = [Vector((px, sgn * (D + 0.004), pz)) for px, pz in P]
+        ring.append(ring[0])
+        mb.tube(ring, [0.022] * len(ring), iron, seg=6)
+        for px, pz in P:
+            mb.add('sphere', gold, loc=(px * 0.93, sgn * (D + 0.02), pz + (0.05 if pz < 0.1 else -0.05 if pz > 1.6 else 0)), scale=(0.022, 0.012, 0.022))
+        # 十字架
+        yc = y_out + sgn * 0.012
+        mb.add('cube', gold, loc=(0, yc, 1.08), scale=(0.07, 0.022, 0.78))
+        mb.add('cube', gold, loc=(0, yc, 1.3), scale=(0.38, 0.022, 0.07))
+    # 側面の金具（持ち手）
+    for s in (-1, 1):
+        for zz in (0.55, 1.0):
+            ex = 0.19 + (0.31 - 0.19) * (zz / 1.18)
+            mb.tube([(s * ex, -0.09, zz), (s * (ex + 0.05), -0.06, zz - 0.03), (s * (ex + 0.05), 0.06, zz - 0.03), (s * ex, 0.09, zz)], [0.012] * 4, iron, seg=6)
+    bmesh.ops.recalc_face_normals(mb.bm, faces=mb.bm.faces[:])
+    mb.build("Mon_Coffin_Trim", COLL, parent=body)
+
 build_purun(0.0)
 build_bat(2.5)
 build_mushroom(5.0)
@@ -1042,6 +1097,7 @@ build_skeleton(29.0)
 build_wisp(32.0)
 build_snake(35.0)
 build_gargoyle(38.0)
+build_coffin(41.0)
 
 if _temp_link:
     SCENE.collection.children.unlink(COLL)

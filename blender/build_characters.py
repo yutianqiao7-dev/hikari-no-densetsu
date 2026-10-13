@@ -1053,9 +1053,17 @@ def R(x=0.0, y=0.0, z=0.0):
     return Euler((x, y, z), 'XYZ').to_quaternion()
 
 
+def ELB(side, b):
+    """ひじを曲げる。前腕に直角な軸で回すので、深く曲げても前腕が外へ開かない"""
+    h, t = Vector(BMAP[f'forearm.{side}'][1]), Vector(BMAP[f'forearm.{side}'][2])
+    f0 = (t - h).normalized()
+    ax = f0.cross(Vector((0, 1, 0))).normalized()
+    return Quaternion(ax, -b)
+
+
 BASE = {
     'upper_arm.L': R(y=0.3), 'upper_arm.R': R(y=-0.3),
-    'forearm.L': R(x=-0.18), 'forearm.R': R(x=-0.18),
+    'forearm.L': ELB('L', 0.18), 'forearm.R': ELB('R', 0.18),
     'hand.L': R(y=0.1), 'hand.R': R(y=-0.1),
 }
 
@@ -1140,7 +1148,7 @@ def make_actions(arm):
                 'neck': R(z=-C['yaw'] * 0.3 * c),
                 'head': R(x=-C['lean'] * 0.7, z=-C['yaw'] * 0.1 * c),
                 'upper_arm.L': R(x=C['arm'] * ca), 'upper_arm.R': R(x=-C['arm'] * ca),
-                'forearm.L': R(x=-C['elbow'] - C['elbow2'] * max(0.0, -ca)), 'forearm.R': R(x=-C['elbow'] - C['elbow2'] * max(0.0, ca)),
+                'forearm.L': ELB('L', C['elbow'] + C['elbow2'] * max(0.0, -ca)), 'forearm.R': ELB('R', C['elbow'] + C['elbow2'] * max(0.0, ca)),
                 'cape.1': R(x=C['cape'] + 0.05 * math.sin(2 * phi * math.tau)),
                 'cape.2': R(x=C['cape'] * 0.5 + 0.08 * math.sin(2 * phi * math.tau + 1)),
             }

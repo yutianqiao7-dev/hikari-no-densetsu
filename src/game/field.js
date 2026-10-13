@@ -142,6 +142,35 @@ export class Field {
 
   followerOf(id) { return this.followers[id]; }
 
+  /** たおれた仲間の棺桶（メンバーごとに 1 つ） */
+  coffinOf(id) {
+    this.coffins = this.coffins || {};
+    if (!this.coffins[id]) {
+      const c = this.world.lib.monster('Mon_Coffin');
+      c.root.visible = false;
+      c.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      c.hop = 0;
+      this.scene.add(c.root);
+      this.coffins[id] = c;
+    }
+    return this.coffins[id];
+  }
+
+  modelOf(m) { return m.id === 'hero' ? this.hero : this.followers[m.id]; }
+
+  /** 隊列：先頭は生きている最初の仲間、その後ろに生きている仲間、いちばん後ろに棺桶 */
+  lineup() {
+    const s = this.g.state;
+    if (!s) return { leader: this.hero, list: [] };
+    const alive = s.party.filter((m) => m.hp > 0), dead = s.party.filter((m) => m.hp <= 0);
+    const lead = alive[0] || s.party[0];
+    const leader = this.modelOf(lead) || this.hero;
+    const list = [];
+    for (const m of alive) if (m !== lead) { const h = this.modelOf(m); if (h) list.push({ m, obj: h }); }
+    for (const m of dead) list.push({ m, obj: this.coffinOf(m.id), coffin: true });
+    return { leader, list };
+  }
+
   /** パーティの並び順（勇者以外） */
   partyFollowers() {
     const s = this.g.state;
@@ -154,14 +183,24 @@ export class Field {
     this.trail = [];
     for (let k = 0; k < 40; k++) this.trail.push(this.pos.clone().addScaledVector(back, k * 0.25));
     for (const f of Object.values(this.followers)) f.root.visible = false;
-    this.partyFollowers().forEach(({ h }, i) => {
+    for (const c of Object.values(this.coffins || {})) c.root.visible = false;
+    const { leader, list } = this.lineup();
+    const show = this.visibleAll !== false;
+    if (leader !== this.hero) {
+      this.hero.root.visible = false;
+      leader.root.position.copy(this.pos);
+      leader.root.rotation.y = this.facing;
+      leader.root.visible = show;
+      leader.speed = 0;
+      leader.stopOneShot(0.01);
+    } else this.hero.root.visible = show;
+    list.forEach(({ obj, coffin }, i) => {
       const p = this.pos.clone().addScaledVector(back, (i + 1) * 1.5);
       p.y = this.env.height(p.x, p.z);
-      h.root.position.copy(p);
-      h.root.rotation.y = this.facing;
-      h.root.visible = this.visibleAll !== false;
-      h.speed = 0;
-      h.stopOneShot(0.01);
+      obj.root.position.copy(p);
+      obj.root.rotation.y = this.facing;
+      obj.root.visible = show;
+      if (!coffin) { obj.speed = 0; obj.stopOneShot(0.01); }
     });
   }
 
@@ -171,7 +210,13 @@ export class Field {
       this.trail.unshift(this.pos.clone());
       if (this.trail.length > 60) this.trail.pop();
     }
-    this.partyFollowers().forEach(({ h }, i) => {
+    const { leader, list } = this.lineup();
+    const show = this.visibleAll !== false;
+    // 表示：先頭と隊列にいるものだけ（パーティ外のキャラクターは触らない）
+    const on = new Set([leader, ...list.map((x) => x.obj)]);
+    for (const m of this.g.state ? this.g.state.party : []) { const h = this.modelOf(m); if (h) h.root.visible = show && on.has(h); }
+    for (const c of Object.values(this.coffins || {})) c.root.visible = show && on.has(c);
+    list.forEach(({ obj: h, coffin }, i) => {
       // 足跡を 1.5m ごとにたどる
       const want = (i + 1) * 1.5;
       let acc = this.pos.distanceTo(this.trail[0] || this.pos), tgt = this.trail[this.trail.length - 1] || this.pos;
@@ -189,8 +234,19 @@ export class Field {
         p.z += d.z * Math.min(1, dt * 9);
         h.root.rotation.y += angDiff(h.root.rotation.y, Math.atan2(d.x, d.z)) * Math.min(1, dt * 10);
       }
+      if (coffin) {
+        // 棺桶：移動した分だけ小さく跳ねる
+        const moved = dist > 0.02 ? Math.min(dist, dt * 9 * dist) : 0;
+        h.hop = (h.hop + moved * 2.6) % Math.PI;
+        if (moved < 1e-4 && h.hop > 0) h.hop = Math.max(0, h.hop - dt * 6);
+        const gy = this.env.height(p.x, p.z);
+        p.y = gy + Math.sin(h.hop) * 0.12;
+        h.root.rotation.z = Math.sin(h.hop * 2) * 0.05;
+        if (dist > 8) { p.copy(tgt); p.y = gy; }
+        return;
+      }
       p.y += (this.env.height(p.x, p.z) - p.y) * Math.min(1, dt * 18);
-      h.speed += (Math.min(sp, this.hero.speed + 0.6) - h.speed) * Math.min(1, dt * 8);
+      h.speed += (Math.min(sp, this.vel.length() + 0.6) - h.speed) * Math.min(1, dt * 8);
       if (dist > 8) { p.copy(tgt); }
       h.update(dt);
     });
@@ -206,6 +262,8 @@ export class Field {
     for (const n of this.npcs) n.h.root.visible = v && n.env === this.env.id;
     for (const m of this.mons) m.root.visible = v;
     for (const { h } of this.partyFollowers()) h.root.visible = v;
+    for (const c of Object.values(this.coffins || {})) c.root.visible = false;
+    if (v) this.resetFollowers();
     if (v) this.placeBosses();
     else { this.boss.root.visible = this.guardian.root.visible = false; }
     if (!v) this.hint.classList.add('hidden');
@@ -253,10 +311,13 @@ export class Field {
     }
     const gy = env.height(this.pos.x, this.pos.z);
     this.pos.y += (gy - this.pos.y) * Math.min(1, dt * 18);
-    this.hero.root.position.copy(this.pos);
-    this.hero.root.rotation.y = this.facing;
-    this.hero.speed = this.vel.length();
-    this.hero.update(dt);
+    const lead = this.lineup().leader;
+    if (lead !== this.hero) this.hero.root.visible = false;
+    lead.root.position.copy(this.pos);
+    lead.root.rotation.y = this.facing;
+    lead.speed = this.vel.length();
+    lead.update(dt);
+    if (lead !== this.hero) this.hero.speed = lead.speed;
     this.updateFollowers(dt);
 
     // 足音・砂ぼこり

@@ -57,9 +57,11 @@ export class Battle {
     f.pos.copy(heroPos);
     f.facing = Math.atan2(dir.x, dir.z);
 
-    // 味方の隊列（横一列、中央が少し前）
+    // 味方の隊列（横一列、中央が少し前）。たおれている仲間は棺桶になって後ろへ
     const party = this.s.party;
     const n = party.length;
+    const ordered = [...party.filter((m) => m.hp > 0), ...party.filter((m) => m.hp <= 0)];
+    this.deadOrder = [];
     let gap = f.inField ? 1.8 : 1.45;
     // 屋内のせまい通路では横一列に入りきらないので、間をつめるか2列にする
     let rows = 1;
@@ -71,9 +73,11 @@ export class Battle {
       if (rows === 2) gap = Math.max(0.9, Math.min(1.3, (halfW - 0.4) * 2 / (Math.ceil(n / 2) - 1 || 1)));
     }
     const perRow = rows === 2 ? Math.ceil(n / 2) : n;
-    party.forEach((m, i) => {
-      const h = i === 0 ? f.hero : f.followerOf(m.id);
+    this.rows = rows;
+    party.forEach((m) => {
+      const h = m.id === 'hero' ? f.hero : f.followerOf(m.id);
       if (!h) return;
+      const i = ordered.indexOf(m);
       const row = Math.floor(i / perRow), col = i % perRow, cnt = row === 0 ? perRow : n - perRow;
       const lat = (col - (cnt - 1) / 2) * gap + (row === 1 ? gap * 0.25 : 0);
       const home = heroPos.clone().addScaledVector(this.right, lat).addScaledVector(dir, -Math.abs(lat) * 0.25 - row * 1.7);
@@ -82,10 +86,16 @@ export class Battle {
       h.root.position.copy(home);
       h.root.rotation.y = f.facing;
       h.speed = 0;
-      if (i === 0) h.setWeapon(true);
-      if (m.hp <= 0) h.play('Down', { hold: true, fade: 0.01 });
-      this.allies.push({ m, h, home, name: memberName(this.s, m), defending: false });
+      if (m.id === 'hero') h.setWeapon(true);
+      const a = { m, h, home, home0: home.clone(), name: memberName(this.s, m), defending: false };
+      this.allies.push(a);
+      if (m.hp <= 0) {
+        h.root.visible = false;
+        a.coffin = f.coffinOf(m.id);
+        this.deadOrder.push(a);
+      }
     });
+    this.placeCoffins(true);
 
     // 敵の編成
     if (boss) {
@@ -126,7 +136,8 @@ export class Battle {
       if (count[e.key] > 1) { idx[e.key] = (idx[e.key] || 0) + 1; e.name = e.def.name + ' ' + 'ABCDE'[idx[e.key] - 1]; }
     }
     f.setVisible(false);
-    for (const a of this.allies) a.h.root.visible = true;
+    for (const a of this.allies) a.h.root.visible = a.m.hp > 0;
+    this.placeCoffins(true);
     if (boss) this.bossObj.root.visible = true;
     this.center = this.enemies.reduce((a, e) => a.add(e.home), V()).multiplyScalar(1 / this.enemies.length);
     // 戦いの場の周りの木・岩を消して、カメラの邪魔にならないように
@@ -134,6 +145,74 @@ export class Battle {
     const rad = this.center.distanceTo(this.center0) * 0.5 + (boss === 'dragon' ? 22 : 15);
     this.g.world.veg.setExclude(mid, rad);
     this.fitCam = this.g.camera.clone();
+  }
+
+  /** 棺桶の置き場所（味方の列のうしろに横並び） */
+  coffinSlot(k, total) {
+    let back = (this.rows || 1) * 1.7 + (this.f.inField ? 3.9 : 1.2);
+    const lat = (k - (total - 1) / 2) * 1.05;
+    let p = this.center0.clone().addScaledVector(this.dir, -back).addScaledVector(this.right, lat);
+    // 屋内では壁にめり込まない所まで前へ
+    while (!this.f.inField && back > 0.8 && !this.f.env.walkable(p.x, p.z)) {
+      back -= 0.4;
+      p = this.center0.clone().addScaledVector(this.dir, -back).addScaledVector(this.right, lat * 0.8);
+    }
+    p.y = this.f.env.height(p.x, p.z);
+    return p;
+  }
+
+  /** 棺桶を列のうしろへ（instant でなければ跳ねながら移動） */
+  placeCoffins(instant) {
+    const list = this.deadOrder, n = list.length;
+    const jobs = list.map((a, k) => {
+      const c = a.coffin;
+      const to = this.coffinSlot(k, n);
+      c.root.visible = true;
+      c.root.rotation.set(0, this.f.facing, 0);
+      if (instant) { c.root.position.copy(to); a.home = to.clone(); return Promise.resolve(); }
+      const from = c.root.position.clone();
+      a.home = to.clone();
+      const t0 = performance.now(), dur = 260 + from.distanceTo(to) * 160;
+      return new Promise((res) => {
+        const step = () => {
+          const k2 = Math.min(1, (performance.now() - t0) / dur);
+          c.root.position.lerpVectors(from, to, k2);
+          c.root.position.y += Math.abs(Math.sin(k2 * Math.PI * Math.max(1, Math.round(dur / 220)))) * 0.25;
+          if (k2 < 1) requestAnimationFrame(step); else { c.root.position.copy(to); res(); }
+        };
+        step();
+      });
+    });
+    return Promise.all(jobs);
+  }
+
+  /** たおれた仲間を棺桶に入れて列のうしろへ */
+  async coffinize(a) {
+    if (a.coffin && a.coffin.root.visible) return;
+    await sleep(450);
+    const c = this.f.coffinOf(a.m.id);
+    a.coffin = c;
+    const p = a.h.root.position.clone();
+    this.g.fx.emit({ pos: p.clone().add(V(0, 0.8, 0)), count: 40, color: [0xffffff, 0xd8d0ff], speed: 1.6, up: 1, life: 0.7, size: 0.45, grow: 1.2, drag: 1.5, spread: 0.6 });
+    this.g.audio.sfx('miss');
+    a.h.root.visible = false;
+    c.root.position.copy(p);
+    c.root.visible = true;
+    this.deadOrder = this.deadOrder.filter((x) => x !== a);
+    this.deadOrder.push(a);
+    await this.placeCoffins(false);
+  }
+
+  /** 生きかえった仲間を棺桶から出して元の位置へ */
+  uncoffin(a) {
+    if (a.coffin) a.coffin.root.visible = false;
+    this.deadOrder = this.deadOrder.filter((x) => x !== a);
+    a.home = a.home0.clone();
+    a.h.root.position.copy(a.home);
+    a.h.root.rotation.y = this.f.facing;
+    a.h.root.visible = true;
+    a.h.stopOneShot(0.01);
+    this.placeCoffins(false);
   }
 
   /** p から向き d へ歩ける距離（屋内用） */
@@ -570,7 +649,7 @@ export class Battle {
       const t = target && target.m.hp <= 0 ? target : this.allies.find((x) => x.m.hp <= 0);
       if (!t) { await this.log.add('しかし なにも おこらなかった。', 400); return; }
       t.m.hp = Math.ceil(derived(t.m).maxHp / 2);
-      t.h.stopOneShot(0.4);
+      this.uncoffin(t);
       audio.sfx('light');
       fx.emit({ pos: t.home.clone(), count: 120, color: [0xffffff, 0xfff0a0], speed: 1, up: 3, life: 1.6, size: 0.3, spread: 1.5, flicker: 18 });
       fx.flashLight(t.home.clone().add(V(0, 2, 0)), 0xfff0c0, 50, 1.2);
@@ -804,6 +883,7 @@ export class Battle {
       this.g.hud.update();
       if (!quiet) await this.log.add(`${a.name}は ${dmg}の ダメージを うけた！`, 420);
       if (a.m.hp <= 0) await this.log.add(`${a.name}は たおれた！`, 500);
+      if (a.m.hp <= 0 && !quiet) await this.coffinize(a);
     };
     const base = (a) => Math.round((def.atk / 2 - derived(a.m).def / 4) * rnd(0.85, 1.15));
     const lunge = async (a, fn) => {
@@ -823,6 +903,7 @@ export class Battle {
       for (const a of hitList) await hit(a, dmgOf(a), true);
       await this.log.add('なかまたちは ダメージを うけた！', 450);
       for (const a of hitList) if (a.m.hp <= 0) await this.log.add(`${a.name}は たおれた！`, 400);
+      for (const a of hitList) if (a.m.hp <= 0) await this.coffinize(a);
     };
 
     switch (mode) {
