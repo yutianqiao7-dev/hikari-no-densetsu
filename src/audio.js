@@ -29,6 +29,7 @@ const CH = {
   G: ['G2', 'B2', 'D3'], D: ['D3', 'F#3', 'A3'], Am: ['A2', 'C3', 'E3'], Em: ['E3', 'G3', 'B3'], A: ['A2', 'C#3', 'E3'],
   E: ['E2', 'G#2', 'B2'], Bm: ['B2', 'D3', 'F#3'], 'F#m': ['F#2', 'A2', 'C#3'], Cmaj: ['C3', 'E3', 'G3'],
   Cm: ['C3', 'Eb3', 'G3'], Ab: ['Ab2', 'C3', 'Eb3'],
+  B: ['B2', 'D#3', 'F#3'], Fm: ['F3', 'Ab3', 'C4'], Db: ['Db3', 'F3', 'Ab3'], Eb: ['Eb3', 'G3', 'Bb3'],
 };
 const up = (n, o) => n.replace(/\d/, (d) => String(parseInt(d, 10) + o));
 function bassLine(chords, pat, bar) {
@@ -82,7 +83,140 @@ const TOWER_MEL = `
   C5:4 Eb5:2 G5:2 | F5:4 Eb5:2 D5:2 | Eb5:3 D5:1 C5:2 Bb4:2 | B4:8 |
   C5:2 G5:2 C6:4 | Bb5:4 Ab5:2 G5:2 | F5:2 Eb5:2 D5:2 F5:2 | G5:8`;
 
+// ---- 第二部：竜の背と五つの島
+const FLIGHT_CH = ['D', 'A', 'Bm', 'G', 'D', 'A', 'G', 'A', 'Bm', 'F#m', 'G', 'D', 'Em', 'A', 'D', 'D'];
+const FLIGHT_MEL = `
+  A4:2 D5:2 F#5:3 E5:1 | E5:2 C#5:2 A4:4 | B4:2 D5:2 F#5:2 A5:2 | G5:6 -:2 |
+  F#5:2 A5:2 D6:3 C#6:1 | B5:2 A5:2 E5:4 | G5:2 F#5:2 E5:2 D5:2 | E5:6 -:2 |
+  D5:2 F#5:2 B5:4 | A5:2 F#5:2 C#5:4 | D5:2 E5:2 G5:2 B5:2 | A5:6 F#5:2 |
+  G5:3 F#5:1 E5:2 G5:2 | F#5:3 E5:1 D5:2 F#5:2 | E5:2 D5:2 C#5:2 E5:2 | D5:8`;
+const DESERT_CH = ['Am', 'Am', 'Dm', 'E', 'Am', 'F', 'E', 'E', 'Dm', 'Am', 'E', 'Am', 'F', 'E', 'Am', 'E'];
+const DESERT_MEL = `
+  A4:2 B4:1 C5:1 E5:3 D5:1 | C5:2 B4:2 A4:4 | D5:2 F5:2 E5:2 D5:2 | G#4:6 -:2 |
+  A4:2 C5:2 E5:2 A5:2 | G5:1 F5:1 E5:2 F5:4 | E5:2 D5:2 C5:2 B4:2 | G#4:4 B4:4 |
+  F5:3 E5:1 D5:2 F5:2 | E5:2 C5:2 A4:4 | B4:2 C5:2 D5:2 G#4:2 | A4:6 -:2 |
+  F5:2 E5:2 D5:2 C5:2 | B4:2 C5:1 B4:1 G#4:4 | A4:2 C5:2 E5:2 F5:2 | E5:8`;
+const ICE_CH = ['Em', 'C', 'G', 'D', 'Em', 'C', 'B', 'B', 'Am', 'Em', 'C', 'G', 'Am', 'B', 'Em', 'Em'];
+const ICE_MEL = `
+  B4:2 E5:2 G5:4 | E5:2 C5:2 E5:4 | D5:2 G5:2 B5:4 | A5:4 F#5:4 |
+  G5:3 F#5:1 E5:2 B4:2 | C5:2 E5:2 G5:4 | F#5:2 D#5:2 B4:4 | -:8 |
+  A4:2 C5:2 E5:4 | G5:2 E5:2 B4:4 | C5:2 E5:2 G5:2 C6:2 | B5:6 -:2 |
+  A5:2 G5:2 F#5:2 E5:2 | D#5:2 F#5:2 B4:4 | E5:2 G5:2 B5:4 | E5:8`;
+const VOLC_CH = ['Cm', 'Cm', 'Ab', 'Bb', 'Cm', 'Cm', 'Fm', 'G', 'Ab', 'Bb', 'Cm', 'Ab', 'Fm', 'G', 'Cm', 'G'];
+const VOLC_MEL = `
+  C5:1 C5:1 Eb5:2 G5:2 C6:2 | Bb5:2 G5:2 F5:2 Eb5:2 | Ab5:3 G5:1 F5:2 Eb5:2 | D5:4 F5:4 |
+  G5:1 G5:1 C6:2 Bb5:2 G5:2 | Ab5:2 G5:2 F5:2 Eb5:2 | F5:2 Ab5:2 C6:2 Ab5:2 | B5:4 G5:4 |
+  C6:2 Bb5:2 Ab5:2 Eb5:2 | D5:2 F5:2 Bb5:4 | G5:2 Eb5:2 C5:2 Eb5:2 | Ab5:6 -:2 |
+  F5:2 Ab5:2 C6:2 F6:2 | D6:2 B5:2 G5:4 | C6:3 G5:1 Eb5:2 C5:2 | D5:4 B4:4`;
+const DARK_CH = ['Dm', 'Bb', 'Gm', 'A', 'Dm', 'Bb', 'E', 'A', 'Gm', 'Dm', 'Bb', 'A', 'Dm', 'Gm', 'A', 'Dm'];
+const DARK_MEL = `
+  D5:4 C#5:2 D5:2 | F5:4 E5:2 D5:2 | Bb4:3 A4:1 G4:2 Bb4:2 | A4:8 |
+  D5:2 F5:2 A5:4 | G#5:4 F5:2 E5:2 | E5:3 F5:1 G#5:2 B5:2 | A5:8 |
+  Bb5:4 A5:2 G5:2 | F5:4 E5:2 D5:2 | F5:2 E5:2 D5:2 Bb4:2 | C#5:6 -:2 |
+  D5:3 E5:1 F5:2 A5:2 | Bb5:3 A5:1 G5:2 E5:2 | C#5:2 E5:2 A5:4 | D5:8`;
+const BOSS2_CH = ['Em', 'Em', 'C', 'D', 'Em', 'Em', 'C', 'B', 'Am', 'B', 'Em', 'C', 'Am', 'B', 'Em', 'B'];
+const BOSS2_MEL = `
+  E5:1 G5:1 B5:2 E6:2 D6:1 B5:1 | C6:2 B5:2 A5:2 G5:2 | A5:1 B5:1 C6:2 B5:2 A5:2 | F#5:4 D5:4 |
+  E5:1 G5:1 B5:2 E6:2 F#6:2 | G6:2 F#6:2 E6:2 C6:2 | B5:2 A5:2 G5:2 F#5:2 | D#5:4 F#5:4 |
+  A5:2 C6:2 E6:2 C6:2 | B5:2 D#6:2 F#6:4 | E6:2 B5:2 G5:2 B5:2 | C6:2 E6:2 G6:4 |
+  F#6:2 E6:2 C6:2 A5:2 | B5:2 A5:2 F#5:2 D#5:2 | E5:2 G5:2 B5:2 E6:2 | D#6:4 B5:4`;
+const FINAL_CH = ['Cm', 'Ab', 'Fm', 'G', 'Cm', 'Ab', 'Db', 'G', 'Fm', 'Cm', 'Ab', 'G', 'Fm', 'Db', 'G', 'G'];
+const FINAL_MEL = `
+  C5:2 Eb5:2 G5:2 C6:2 | Ab5:3 G5:1 F5:2 Eb5:2 | F5:2 Ab5:2 C6:2 Eb6:2 | D6:4 B5:4 |
+  C6:2 G5:2 Eb5:2 C5:2 | Ab5:2 C6:2 Eb6:4 | Db6:3 C6:1 Bb5:2 Ab5:2 | B5:6 -:2 |
+  Ab5:2 C6:2 F6:2 C6:2 | G5:2 C6:2 Eb6:4 | Eb6:2 D6:2 C6:2 Ab5:2 | G5:6 -:2 |
+  F5:2 Ab5:2 C6:2 F6:2 | Db6:2 F6:2 Ab6:4 | G6:4 F6:2 D6:2 | B5:4 G5:4`;
+const down = (mel) => mel.replace(/([A-G][#b]?)(\d)/g, (m, n, o) => n + (parseInt(o, 10) - 1));
+
 const SONGS = {
+  flight: {
+    bpm: 120, tracks: [
+      { inst: 'brass', vol: 0.12, s: FLIGHT_MEL },
+      { inst: 'strings', vol: 0.08, s: padLine(FLIGHT_CH, 8, 1) },
+      { inst: 'bass', vol: 0.28, s: bassLine(FLIGHT_CH, [[0, 2, -1], [2, 2, -1], [0, 2, 0], [1, 2, -1]]) },
+      { inst: 'bell', vol: 0.04, s: arpLine(FLIGHT_CH, [[0, 1], [1, 1], [2, 1], [1, 1], [0, 1], [1, 1], [2, 1], [1, 1]], 2) },
+      { inst: 'drum', vol: 0.2, s: rep('k:2 h:1 h:1 s:2 h:1 o:1', 16) },
+    ],
+  },
+  desert: {
+    bpm: 96, tracks: [
+      { inst: 'flute', vol: 0.15, s: DESERT_MEL },
+      { inst: 'bass', vol: 0.27, s: bassLine(DESERT_CH, [[0, 3, -1], [0, 1, -1], [2, 2, -1], [0, 2, 0]]) },
+      { inst: 'pad', vol: 0.06, s: padLine(DESERT_CH, 8) },
+      { inst: 'drum', vol: 0.2, s: rep('k:2 h:1 k:1 s:2 h:1 h:1', 16) },
+    ],
+  },
+  ruins: {
+    bpm: 72, tracks: [
+      { inst: 'bell', vol: 0.11, s: DESERT_MEL },
+      { inst: 'pad', vol: 0.08, s: padLine(DESERT_CH, 8) },
+      { inst: 'bass', vol: 0.22, s: bassLine(DESERT_CH, [[0, 8, -1]]) },
+    ],
+  },
+  ice: {
+    bpm: 78, tracks: [
+      { inst: 'bell', vol: 0.13, s: ICE_MEL },
+      { inst: 'strings', vol: 0.07, s: padLine(ICE_CH, 8, 1) },
+      { inst: 'bass', vol: 0.22, s: bassLine(ICE_CH, [[0, 4, -1], [2, 4, -1]]) },
+      { inst: 'flute', vol: 0.05, s: arpLine(ICE_CH, [[0, 2], [1, 2], [2, 2], [1, 2]], 2) },
+    ],
+  },
+  icecave: {
+    bpm: 62, tracks: [
+      { inst: 'bell', vol: 0.1, s: ICE_MEL },
+      { inst: 'pad', vol: 0.09, s: padLine(ICE_CH, 8) },
+      { inst: 'bass', vol: 0.2, s: bassLine(ICE_CH, [[0, 8, -1]]) },
+    ],
+  },
+  volcano: {
+    bpm: 138, tracks: [
+      { inst: 'lead', vol: 0.13, s: VOLC_MEL },
+      { inst: 'bass', vol: 0.3, s: bassLine(VOLC_CH, [[0, 1, -1], [0, 1, -1], [0, 1, 0], [0, 1, -1], [2, 1, -1], [0, 1, -1], [0, 1, 0], [1, 1, -1]]) },
+      { inst: 'organ', vol: 0.06, s: padLine(VOLC_CH, 8, 1) },
+      { inst: 'drum', vol: 0.24, s: rep('k:1 h:1 s:1 h:1 k:1 k:1 s:1 h:1', 16) },
+    ],
+  },
+  lavacave: {
+    bpm: 104, tracks: [
+      { inst: 'organ', vol: 0.1, s: VOLC_MEL },
+      { inst: 'bass', vol: 0.28, s: bassLine(VOLC_CH, [[0, 2, -1], [0, 2, -1], [2, 2, -1], [0, 2, -1]]) },
+      { inst: 'drum', vol: 0.2, s: rep('k:4 -:2 k:1 k:1', 16) },
+    ],
+  },
+  dark: {
+    bpm: 74, tracks: [
+      { inst: 'strings', vol: 0.11, s: DARK_MEL },
+      { inst: 'organ', vol: 0.07, s: padLine(DARK_CH, 8, 1) },
+      { inst: 'bass', vol: 0.26, s: bassLine(DARK_CH, [[0, 4, -1], [0, 4, -2]]) },
+      { inst: 'bell', vol: 0.04, s: '-:6 D6:1 -:9 A5:1 -:15 F6:1 -:12 C#6:1 -:19' },
+    ],
+  },
+  darkcastle: {
+    bpm: 88, tracks: [
+      { inst: 'organ', vol: 0.1, s: DARK_MEL },
+      { inst: 'brass', vol: 0.05, s: down(DARK_MEL) },
+      { inst: 'bass', vol: 0.28, s: bassLine(DARK_CH, [[0, 2, -1], [0, 2, -1], [2, 2, -1], [0, 2, -1]]) },
+      { inst: 'drum', vol: 0.18, s: rep('k:4 -:2 s:1 s:1', 16) },
+    ],
+  },
+  boss2: {
+    bpm: 158, tracks: [
+      { inst: 'brass', vol: 0.12, s: BOSS2_MEL },
+      { inst: 'lead', vol: 0.06, s: down(BOSS2_MEL) },
+      { inst: 'bass', vol: 0.32, s: bassLine(BOSS2_CH, [[0, 1, -1], [0, 1, -1], [0, 1, 0], [0, 1, -1], [1, 1, -1], [0, 1, -1], [0, 1, 0], [2, 1, -1]]) },
+      { inst: 'strings', vol: 0.06, s: padLine(BOSS2_CH, 8, 1) },
+      { inst: 'drum', vol: 0.28, s: 'c:2 s:1 s:1 k:1 k:1 s:1 h:1 ' + rep('k:1 h:1 s:1 k:1 k:1 h:1 s:1 o:1', 15) },
+    ],
+  },
+  final: {
+    bpm: 146, tracks: [
+      { inst: 'organ', vol: 0.1, s: FINAL_MEL },
+      { inst: 'brass', vol: 0.09, s: down(FINAL_MEL) },
+      { inst: 'bass', vol: 0.34, s: bassLine(FINAL_CH, [[0, 1, -1], [0, 1, -1], [0, 1, 0], [0, 1, -1], [1, 1, -1], [0, 1, -1], [2, 1, 0], [0, 1, -1]]) },
+      { inst: 'strings', vol: 0.07, s: padLine(FINAL_CH, 8, 1) },
+      { inst: 'drum', vol: 0.3, s: 'c:2 s:1 s:1 k:1 k:1 s:1 s:1 ' + rep('k:1 h:1 s:1 k:1 k:1 h:1 s:1 s:1', 15) },
+    ],
+  },
   cave: {
     bpm: 68, tracks: [
       { inst: 'bell', vol: 0.1, s: CAVE_MEL },

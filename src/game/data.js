@@ -139,9 +139,141 @@ export const CHESTS = {
 
 export const SHOP = ['herb', 'ether', 'wing', 'sword_iron', 'sword_steel', 'sword_light', 'armor_leather', 'armor_chain', 'armor_steel', 'shield_iron', 'shield_light'];
 
-export const MAX_LV = 20;
+export const MAX_LV = 50;
 export function expForLevel(lv) { return lv <= 1 ? 0 : Math.round(9 * Math.pow(lv - 1, 2.35) + 6 * (lv - 1)); }
 
+
+// ================================================================== 第二部：五つの島
+// 島ごとのモンスター（モデルは Blender で作成。色ちがいは recolor）
+Object.assign(MONSTERS, {
+  // ---- 灼砂の島
+  sandpurun: { name: 'すなぷるりん', model: 'Mon_Purun', scale: 1.3, recolor: { Gel: '#e8c070', SproutLeaf: '#7a8a3a' }, hp: 95, atk: 112, def: 40, agi: 30, exp: 70, gold: 40 },
+  cactus: { name: 'トゲサボテン', model: 'Mon_Cactus', scale: 1.0, hp: 125, atk: 120, def: 58, agi: 22, exp: 85, gold: 55, skill: 'allhit', skillText: 'は トゲを まわりに うちだした！', skillMul: 0.6 },
+  scorpion: { name: 'デザートスコーピオン', model: 'Mon_Scorpion', scale: 1.0, hp: 145, atk: 136, def: 72, agi: 45, exp: 95, gold: 60, skill: 'strike', skillText: 'は どくばりで つきさした！', skillMul: 1.5 },
+  mummy: { name: 'ミイラおとこ', model: 'Mon_Mummy', scale: 1.0, hp: 175, atk: 130, def: 50, agi: 25, exp: 105, gold: 70, skill: 'strike', skillText: 'は ほうたいで しめつけた！', skillMul: 1.4 },
+  sandsnake: { name: 'スナコブラ', model: 'Mon_Snake', scale: 1.25, recolor: { SnakeScale: '#c8a050', SnakeScaleDark: '#6a4a20', SnakeBelly: '#f0e0b0', SnakeIris: '#40ff80' }, hp: 125, atk: 128, def: 45, agi: 62, exp: 90, gold: 55, skill: 'strike', skillText: 'は すなに もぐって かみついた！', skillMul: 1.45 },
+  giltab: { name: 'だいサソリ ギルタブ', model: 'Mon_Scorpion', scale: 2.3, boss: true, mid: true, recolor: { ScorpShell: '#d8a030', ScorpShellDark: '#3a2410', ScorpEye: '#ff3020' }, hp: 1400, atk: 150, def: 75, agi: 40, exp: 1500, gold: 1200, skill: 'strike', skillText: 'は きょだいな ハサミで はさみこんだ！', skillMul: 1.6 },
+  anubis: { name: '砂の魔将 アヌビス', model: 'Mon_Anubis', scale: 1.5, boss: true, hp: 2400, atk: 165, def: 80, agi: 70, exp: 3000, gold: 2500, skill: 'magicall', skillText: 'は すなあらしの のろいを となえた！', skillPow: [55, 75], fxColor: [0xe8c070, 0xff9a40, 0xffffff] },
+  // ---- 氷雪の島
+  icepurun: { name: 'こおりぷるりん', model: 'Mon_Purun', scale: 1.35, recolor: { Gel: '#9fe0ff', SproutLeaf: '#e0f8ff' }, hp: 175, atk: 145, def: 70, agi: 40, exp: 140, gold: 70 },
+  snowman: { name: 'ゆきだるまん', model: 'Mon_Snowman', scale: 1.0, hp: 235, atk: 150, def: 85, agi: 20, exp: 170, gold: 90, skill: 'magicall', skillText: 'は つめたい いきを ふきかけた！', skillPow: [40, 55], fxColor: [0xd0f0ff, 0xffffff, 0x80c0ff] },
+  icewolf: { name: 'アイスウルフ', model: 'Mon_Wolf', scale: 1.15, recolor: { WolfFur: '#e8f4ff', WolfFurDark: '#8ab0d0', WolfFurLight: '#ffffff' }, hp: 215, atk: 165, def: 70, agi: 82, exp: 175, gold: 85, skill: 'strike', skillText: 'は こおりの キバで かみついた！', skillMul: 1.45 },
+  penguin: { name: 'ペンギンナイト', model: 'Mon_Penguin', scale: 1.0, hp: 245, atk: 168, def: 92, agi: 55, exp: 185, gold: 100, skill: 'strike', skillText: 'は こおりの やりで つきさした！', skillMul: 1.45 },
+  icewraith: { name: 'ひょうれい', model: 'Mon_Ghost', scale: 1.3, recolor: { Ghost: '#cfeeff', GhostSkirt: '#9fd8ff' }, hp: 195, atk: 150, def: 70, agi: 72, exp: 165, gold: 90, skill: 'magicall', skillText: 'は ふぶきを よびおこした！', skillPow: [45, 60], fxColor: [0xd0f0ff, 0xffffff, 0x80c0ff] },
+  yeti: { name: 'イエティ', model: 'Mon_Yeti', scale: 1.6, boss: true, mid: true, hp: 2400, atk: 185, def: 95, agi: 50, exp: 2600, gold: 2000, skill: 'strike', skillText: 'は こおりの いわを なげつけた！', skillMul: 1.6 },
+  glacia: { name: '氷竜 グレイシャ', model: 'Mon_Dragon', scale: 1.1, boss: true, recolor: { DragonScale: '#a8d8f0', DragonScaleDark: '#5080b0', DragonBelly: '#f0fbff', DragonWing: '#6aa8d8', DragonEye: '#40e0ff', Horn: '#e8f8ff' }, hp: 3600, atk: 200, def: 100, agi: 75, exp: 5000, gold: 4000, skill: 'magicall', skillText: 'は こごえる ふぶきを はいた！', skillPow: [70, 90], fxColor: [0xd0f0ff, 0xffffff, 0x60b0ff], breath: true },
+  // ---- 炎獄の島
+  lavapurun: { name: 'マグマぷるりん', model: 'Mon_Purun', scale: 1.35, recolor: { Gel: '#ff5a20', SproutLeaf: '#3a2a20' }, hp: 265, atk: 180, def: 90, agi: 50, exp: 230, gold: 110 },
+  salamander: { name: 'サラマンダー', model: 'Mon_Lizard', scale: 1.0, hp: 320, atk: 200, def: 100, agi: 70, exp: 270, gold: 130, skill: 'magicall', skillText: 'は ほのおの いきを はいた！', skillPow: [55, 70], fxColor: [0xffdd66, 0xff7722, 0xff3300] },
+  firebird: { name: 'ひのとり', model: 'Mon_Firebird', scale: 1.0, hp: 295, atk: 195, def: 90, agi: 110, exp: 260, gold: 125, skill: 'strike', skillText: 'は ほのおの つばさで きりさいた！', skillMul: 1.5 },
+  magmagolem: { name: 'マグマゴーレム', model: 'Mon_Golem', scale: 1.1, recolor: { GolemRock: '#3a2a26', GolemRockDark: '#1e1614', Moss: '#ff5a10', GolemEye: '#ffb030' }, hp: 420, atk: 215, def: 130, agi: 20, exp: 300, gold: 150, skill: 'smash' },
+  flamewisp: { name: 'ほのおのせい', model: 'Mon_Wisp', scale: 1.2, recolor: { FlameCore: '#fff0a0', FlameMid: '#ff3010' }, hp: 255, atk: 185, def: 95, agi: 96, exp: 240, gold: 120, skill: 'magicall', skillText: 'は ひばしらを たてた！', skillPow: [50, 66], fxColor: [0xffdd66, 0xff7722, 0xff3300] },
+  magmalord: { name: 'マグマロード', model: 'Mon_Golem', scale: 1.9, boss: true, mid: true, recolor: { GolemRock: '#2e2220', GolemRockDark: '#120c0a', Moss: '#ff6a10', GolemEye: '#ffe060' }, hp: 3600, atk: 225, def: 130, agi: 40, exp: 4000, gold: 3000, skill: 'smash' },
+  ifrit: { name: '炎の魔将 イフリート', model: 'Mon_Ifrit', scale: 1.5, boss: true, hp: 5200, atk: 240, def: 125, agi: 90, exp: 7000, gold: 5000, skill: 'magicall', skillText: 'は じごくの ほのおを よびだした！', skillPow: [85, 110], fxColor: [0xffdd66, 0xff5511, 0xff2200], breath: true },
+  // ---- 闇の島
+  shadow: { name: 'シャドー', model: 'Mon_Ghost', scale: 1.35, recolor: { Ghost: '#3a2a4a', GhostSkirt: '#20142a' }, hp: 360, atk: 220, def: 110, agi: 100, exp: 360, gold: 160, skill: 'magicall', skillText: 'は やみの ちからを はなった！', skillPow: [65, 85], fxColor: [0x8040ff, 0x301050, 0xffffff] },
+  evileye: { name: 'デビルアイ', model: 'Mon_EvilEye', scale: 1.0, hp: 340, atk: 215, def: 105, agi: 120, exp: 350, gold: 160, skill: 'magicall', skillText: 'は あやしい ひかりを はなった！', skillPow: [60, 80], fxColor: [0xff3060, 0xffa0c0, 0xffffff] },
+  darkknight: { name: 'やみのきし', model: 'Mon_DarkKnight', scale: 1.0, hp: 480, atk: 250, def: 140, agi: 70, exp: 420, gold: 200, skill: 'strike', skillText: 'は くろい つるぎで きりさいた！', skillMul: 1.45 },
+  gargoyle_dark: { name: 'ブラックガーゴイル', model: 'Mon_Gargoyle', scale: 1.15, recolor: { GargStone: '#3a3444', GargStoneDark: '#1a1620', GargEye: '#ff3040', GargWing: '#2a1c30' }, hp: 400, atk: 235, def: 120, agi: 100, exp: 380, gold: 180, skill: 'strike', skillText: 'は きゅうこうかして ツメで きりさいた！', skillMul: 1.45 },
+  skeleton_king: { name: 'がいこつおう', model: 'Mon_Skeleton', scale: 1.25, recolor: { SkelBone: '#e8d8a0', SkelBoneDark: '#8a7040', SkullGlow: '#ff40ff', RustIron: '#c8a040', Rust: '#802040', SkelCloth: '#601030' }, hp: 430, atk: 240, def: 125, agi: 80, exp: 400, gold: 190, skill: 'strike', skillText: 'は おうじゃの つるぎを ふりおろした！', skillMul: 1.5 },
+  knightlord: { name: '暗黒騎士団長 ベリアス', model: 'Mon_DarkKnight', scale: 1.6, boss: true, mid: true, recolor: { KnightArmor: '#2a2030', KnightTrim: '#d8a040', KnightCape: '#801020', KnightEye: '#ff3020' }, hp: 5000, atk: 265, def: 150, agi: 80, exp: 6000, gold: 4000, skill: 'strike', skillText: 'は あんこくの いちげきを はなった！', skillMul: 1.65 },
+  zenos: { name: '混沌王 ゼノス', model: 'Mon_Zenos', scale: 1.6, boss: true, final: true, hp: 9000, atk: 285, def: 150, agi: 110, exp: 0, gold: 0, skill: 'magicall', skillText: 'は こんとんの ほのおを はなった！', skillPow: [100, 130], fxColor: [0xa040ff, 0xff40a0, 0xffffff], breath: true },
+});
+
+/** 島ごとの出現テーブル（島のローカル座標・夜） */
+export function islandEncounter(id, x, z, night, h) {
+  const T = {
+    desert: { lv: 22, list: ['sandpurun', 'cactus', 'scorpion', 'mummy', 'sandsnake', 'scorpion'], night: ['mummy', 'mummy', 'wisp'] },
+    ice: { lv: 28, list: ['icepurun', 'snowman', 'icewolf', 'penguin', 'icewraith', 'icewolf'], night: ['icewraith', 'icewraith'] },
+    volcano: { lv: 34, list: ['lavapurun', 'salamander', 'firebird', 'magmagolem', 'flamewisp', 'salamander'], night: ['flamewisp', 'firebird'] },
+    dark: { lv: 40, list: ['shadow', 'evileye', 'darkknight', 'gargoyle_dark', 'skeleton_king', 'darkknight'], night: ['shadow', 'evileye'] },
+  }[id];
+  const list = T.list.slice();
+  if (night) list.push(...T.night);
+  return { lv: T.lv, list };
+}
+
+/** 島のダンジョンの中ボス・ボス（フロア ID → 記号 B の位置に置く） */
+export const ISLAND_BOSSES = {
+  pyr1: { key: 'giltab', flag: 'b_giltab', range: 7, lines: [{ who: 'ギルタブ', text: 'キシャアアア……！ ファラオの ねむりを さまたげる ものは ゆるさぬ！' }] },
+  pyr2: { key: 'anubis', flag: 'b_anubis', range: 7, orb: 'desert', lines: [{ who: 'アヌビス', text: 'ほう…… 竜を てなずけた ゆうしゃか。' }, { who: 'アヌビス', text: 'ゼノスさまの ために、 この 砂の せいれいは わたさぬ！ すなに かえるがよい！' }] },
+  ice1: { key: 'yeti', flag: 'b_yeti', range: 7, lines: [{ who: 'イエティ', text: 'ウオオオオ……！' }] },
+  ice2: { key: 'glacia', flag: 'b_glacia', range: 10, orb: 'ice', lines: [{ who: 'グレイシャ', text: 'ヴァルザード…… にんげんに くだったか。 おちぶれた ものよ。' }, { who: 'グレイシャ', text: 'こおりの せいれいは わが ちからの みなもと。 えいえんの ねむりに つくがよい！' }] },
+  lava1: { key: 'magmalord', flag: 'b_magmalord', range: 8, lines: [{ who: 'マグマロード', text: 'ゴゴゴゴ……！ ここより さきへは ゆかせぬ！' }] },
+  lava2: { key: 'ifrit', flag: 'b_ifrit', range: 8, orb: 'volcano', lines: [{ who: 'イフリート', text: 'ククク…… アヌビスも グレイシャも やぶったか。 だが ここまでだ。' }, { who: 'イフリート', text: 'ほのおの せいれいごと、 はいに してくれよう！' }] },
+  dark1: { key: 'knightlord', flag: 'b_knightlord', range: 8, lines: [{ who: 'ベリアス', text: 'われは 暗黒騎士団長 ベリアス。 ゼノスさまの もとへは いかせん！' }] },
+  dark2: { key: 'zenos', flag: 'b_zenos', range: 11, final: true, lines: [{ who: 'ゼノス', text: 'よくぞ きた、 ひかりの ゆうしゃよ。 そして うらぎりの 竜よ。' }, { who: 'ゼノス', text: 'この せかいの ひかりも やみも、 すべては こんとんに かえる。 それが さだめだ。' }, { who: 'ゼノス', text: 'さあ、 おまえたちの ひかりで わが こんとんを とめてみせよ！' }] },
+};
+
+// 第二部の そうび・どうぐ
+Object.assign(ITEMS, {
+  hiherb: { name: 'じょうやくそう', price: 60, desc: 'HPを 150ほど かいふく', use: 'heal', power: [140, 160] },
+  elixir: { name: 'せいれいのしずく', price: 400, desc: 'HPを ぜんぶ かいふく', use: 'heal', power: [9999, 9999] },
+  hiether: { name: 'まほうのせいすいＶ', price: 300, desc: 'MPを 60 かいふく', use: 'mp', power: [60, 60] },
+});
+Object.assign(EQUIP, {
+  sword_scimitar: { name: 'さばくのシミター', slot: 'weapon', atk: 58, price: 2600 },
+  axe_battle: { name: 'バトルアックス', slot: 'weapon', atk: 62, price: 2500 },
+  staff_sun: { name: 'たいようのつえ', slot: 'weapon', atk: 24, price: 1800 },
+  armor_scale: { name: 'うろこのよろい', slot: 'armor', def: 42, price: 2400 },
+  robe_desert: { name: 'さばくのローブ', slot: 'armor', def: 26, price: 1600 },
+  shield_bronze: { name: 'せいどうのたて', slot: 'shield', def: 26, price: 1800 },
+  sword_ice: { name: 'こおりのやいば', slot: 'weapon', atk: 74, price: 4600 },
+  axe_frost: { name: 'フロストアックス', slot: 'weapon', atk: 78, price: 4400 },
+  staff_snow: { name: 'ゆきのつえ', slot: 'weapon', atk: 32, price: 3000 },
+  armor_mithril: { name: 'ミスリルよろい', slot: 'armor', def: 56, price: 4800 },
+  robe_mithril: { name: 'ミスリルローブ', slot: 'armor', def: 36, price: 3200 },
+  shield_ice: { name: 'こおりのたて', slot: 'shield', def: 33, price: 3600 },
+  sword_flame: { name: 'ほのおのつるぎ', slot: 'weapon', atk: 90, price: 7200 },
+  axe_magma: { name: 'マグマアックス', slot: 'weapon', atk: 95, price: 6900 },
+  staff_flame: { name: 'えんじゃのつえ', slot: 'weapon', atk: 40, price: 5000 },
+  armor_dragon: { name: 'ドラゴンメイル', slot: 'armor', def: 72, price: 7600 },
+  robe_dragon: { name: 'りゅうのはごろも', slot: 'armor', def: 47, price: 5200 },
+  shield_dragon: { name: 'ドラゴンシールド', slot: 'shield', def: 42, price: 5600 },
+  sword_hero: { name: 'ゆうしゃのつるぎ', slot: 'weapon', atk: 112, price: 12000 },
+  axe_god: { name: 'はかいのおの', slot: 'weapon', atk: 116, price: 11500 },
+  staff_angel: { name: 'てんしのつえ', slot: 'weapon', atk: 48, price: 8000 },
+  armor_hero: { name: 'ゆうしゃのよろい', slot: 'armor', def: 90, price: 13000 },
+  robe_angel: { name: 'てんしのローブ', slot: 'armor', def: 60, price: 9000 },
+  shield_hero: { name: 'ゆうしゃのたて', slot: 'shield', def: 54, price: 9500 },
+});
+
+export const SHOPS = {
+  desert: ['herb', 'hiherb', 'ether', 'wing', 'sword_scimitar', 'axe_battle', 'staff_sun', 'armor_scale', 'robe_desert', 'shield_bronze'],
+  ice: ['hiherb', 'ether', 'hiether', 'wing', 'sword_ice', 'axe_frost', 'staff_snow', 'armor_mithril', 'robe_mithril', 'shield_ice'],
+  volcano: ['hiherb', 'hiether', 'elixir', 'wing', 'sword_flame', 'axe_magma', 'staff_flame', 'armor_dragon', 'robe_dragon', 'shield_dragon'],
+  dark: ['hiherb', 'hiether', 'elixir', 'wing', 'sword_hero', 'axe_god', 'staff_angel', 'armor_hero', 'robe_angel', 'shield_hero'],
+};
+
+// 第二部の じゅもん・とくぎ
+Object.assign(SPELLS, {
+  gigaslash: { name: 'ギガスラッシュ', mp: 18, target: 'all', desc: 'いかずちの つるぎで てき全体を きる', power: [150, 190], fx: 'lightning' },
+  gigabreak: { name: 'ギガブレイク', mp: 30, target: 'all', desc: 'てんの いかずちを てき全体に おとす', power: [260, 320], fx: 'lightning' },
+  meteor: { name: 'メテオ', mp: 20, target: 'all', desc: 'いんせきを ふらせ てき全体に 大ダメージ', power: [130, 165], fx: 'storm' },
+  flare: { name: 'フレア', mp: 26, target: 'one', desc: 'ちょうこうねつで てき1たいに 大ダメージ', power: [320, 380], fx: 'fire' },
+  ultima: { name: 'アルテマ', mp: 45, target: 'all', desc: 'すべてを やきつくす きゅうきょくの じゅもん', power: [300, 360], fx: 'storm' },
+  kabuto: { name: 'かぶとわり', mp: 0, target: 'one', desc: 'てき1たいの かぶとごと たたきわる', power: [0, 0], fx: 'whirl', skill: true, melee: 1.7 },
+  jinrai: { name: 'じんらいぎり', mp: 0, target: 'all', desc: 'いかずちの ように てき全体を きる', power: [0, 0], fx: 'whirl', skill: true, melee: 1.15 },
+  fullheal: { name: 'フルヒール', mp: 14, target: 'ally', field: true, desc: 'なかま1人の HPを ぜんぶ かいふく', power: [9999, 9999] },
+  saintheal: { name: 'セイントヒール', mp: 22, target: 'allies', field: true, desc: 'なかま全員の HPを 180ほど かいふく', power: [160, 200] },
+  holy: { name: 'ホーリー', mp: 24, target: 'all', desc: 'せいなる ひかりで てき全体を うつ', power: [180, 230], fx: 'light' },
+});
+Object.assign(MEMBERS.hero.spells, { highheal: 20, gigaslash: 24, gigabreak: 36 });
+Object.assign(MEMBERS.milia.spells, { meteor: 22, flare: 30, ultima: 40 });
+Object.assign(MEMBERS.gald.spells, { kabuto: 18, jinrai: 30 });
+Object.assign(MEMBERS.serena.spells, { fullheal: 20, saintheal: 28, holy: 34 });
+
+// 島のダンジョンの宝箱
+Object.assign(CHESTS, {
+  'pyr1-0': { item: 'hiherb', n: 3 }, 'pyr1-1': { gold: 1500 }, 'pyr1-2': { equip: 'shield_bronze' },
+  'pyr2-0': { equip: 'sword_scimitar' }, 'pyr2-1': { item: 'hiether', n: 2 },
+  'ice1-0': { item: 'hiherb', n: 4 }, 'ice1-1': { gold: 2600 }, 'ice1-2': { equip: 'robe_mithril' },
+  'ice2-0': { equip: 'sword_ice' }, 'ice2-1': { item: 'elixir', n: 1 },
+  'lava1-0': { item: 'hiether', n: 2 }, 'lava1-1': { gold: 4200 }, 'lava1-2': { equip: 'shield_dragon' },
+  'lava2-0': { equip: 'armor_dragon' }, 'lava2-1': { item: 'elixir', n: 2 },
+  'dark1-0': { item: 'elixir', n: 2 }, 'dark1-1': { equip: 'sword_hero' }, 'dark1-2': { gold: 8000 },
+  'dark2-0': { equip: 'shield_hero' }, 'dark2-1': { item: 'hiether', n: 3 },
+});
 
 /** 会話。関数は (game) を受け取り、行の配列を返す */
 export const TALK = {

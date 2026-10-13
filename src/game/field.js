@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { Humanoid, Monster, angDiff } from '../actors/actor.js';
-import { MONSTERS, MEMBERS } from './data.js';
-import { AREAS } from '../world/world.js';
+import { MONSTERS, MEMBERS, ISLAND_BOSSES } from './data.js';
 
 // 屋外の NPC（フィールドのマーカー位置）
 const OUTDOOR = { Guard3: 'Guard', Guard4: 'Guard', Girl: 'Girl', Villager1: 'Villager', Villager2: 'Villager' };
@@ -74,11 +73,8 @@ export class Field {
       const sp = floor && floor.spots[spot] && floor.spots[spot][idx];
       if (sp) addNpc(id, model, fl, new THREE.Vector3(sp[0], 0, sp[1]), rot, wander, range);
     }
-    this.signs = ['Sign1', 'Sign2', 'Sign3', 'Sign4'].map((id) => world.marker(id) && { id, pos: world.marker(id).pos }).filter(Boolean);
-    // 建物・洞窟・塔の入口（室内データの door マーカーから）
-    this.doors = Object.values(world.interiors.floors)
-      .filter((f) => f.door && world.marker(f.door))
-      .map((f) => ({ id: f.id, m: world.marker(f.door) }));
+    this.addNpc = addNpc;
+    this.refreshMapPoints();
 
     // 魔竜（まおうの塔 3F）・がんせきの番人（洞窟 B2）
     this.boss = new Monster(world.lib, MONSTERS.dragon);
@@ -101,6 +97,26 @@ export class Field {
   }
 
   get inField() { return this.env.kind === 'field'; }
+
+  /** いまの島のかんばん・建物やダンジョンの入口（島を切り替えたら呼ぶ） */
+  refreshMapPoints() {
+    const world = this.world;
+    this.signs = Object.keys(world.markers).filter((k) => /^Sign/.test(k)).map((id) => ({ id, pos: world.marker(id).pos }));
+    this.doors = Object.values(world.interiors.floors)
+      .filter((f) => f.door && world.marker(f.door))
+      .map((f) => ({ id: f.id, m: world.marker(f.door) }));
+  }
+
+  /** 島を読み込んだら、その島の NPC（マーカー NPC_<id>）を置く */
+  addIslandNpcs(map) {
+    const models = map.data.npcs || {};
+    for (const [k, m] of Object.entries(map.markers)) {
+      const a = /^NPC_(\w+)$/.exec(k);
+      if (!a || this.npcs.some((n) => n.id === a[1])) continue;
+      const info = models[a[1]] || {};
+      this.addNpc(a[1], info.model || 'Villager', map.env.id, new THREE.Vector3(m.x, m.y, m.z), m.rot, !!info.wander, info.range || 3.0);
+    }
+  }
 
   /** 場所の切り替え */
   setEnv(env) {
@@ -126,6 +142,21 @@ export class Field {
     if (gp) { this.guardian.root.position.copy(gp); this.guardian.root.rotation.y = Math.PI; }
     this.bossPos = bp;
     this.guardianPos = gp;
+    // 島のダンジョンの中ボス・ボス
+    if (this.ibossObj) this.ibossObj.root.visible = false;
+    this.ibossObj = null;
+    const ib = ISLAND_BOSSES[env.id];
+    const ip = ib ? at('B') : null;
+    if (ib && ip && !fl[ib.flag]) {
+      this.ibossCache = this.ibossCache || {};
+      let m = this.ibossCache[ib.key];
+      if (!m) { m = new Monster(this.world.lib, MONSTERS[ib.key]); this.scene.add(m.root); this.ibossCache[ib.key] = m; }
+      m.root.position.copy(ip);
+      m.root.rotation.y = Math.PI;
+      m.root.visible = true;
+      m.bossInfo = ib;
+      this.ibossObj = m;
+    }
   }
 
   place(pos, rot) {
@@ -265,7 +296,7 @@ export class Field {
     for (const c of Object.values(this.coffins || {})) c.root.visible = false;
     if (v) this.resetFollowers();
     if (v) this.placeBosses();
-    else { this.boss.root.visible = this.guardian.root.visible = false; }
+    else { this.boss.root.visible = this.guardian.root.visible = false; if (this.ibossObj) this.ibossObj.root.visible = false; }
     if (!v) this.hint.classList.add('hidden');
   }
 
@@ -302,6 +333,7 @@ export class Field {
       for (const n of this.npcs) if (n.env === env.id) this.pushOut(next, n.pos, 0.85);
       if (this.boss.root.visible) this.pushOut(next, this.boss.root.position, 4.0);
       if (this.guardian.root.visible) this.pushOut(next, this.guardian.root.position, 2.2);
+      if (this.ibossObj && this.ibossObj.root.visible) this.pushOut(next, this.ibossObj.root.position, 1.6 + 1.2 * (this.ibossObj.def.scale || 1));
       if (env.walkable(next.x, next.z, this.pos.y)) { this.pos.x = next.x; this.pos.z = next.z; }
     } else {
       // 壁・斜面・水際ではすべるように
@@ -340,13 +372,14 @@ export class Field {
     for (const n of this.npcs) if (n.env === env.id) this.updateNpc(n, dt);
     if (this.boss.root.visible) this.boss.update(dt);
     if (this.guardian.root.visible) this.guardian.update(dt);
+    if (this.ibossObj && this.ibossObj.root.visible) this.ibossObj.update(dt);
 
     if (this.inField) {
       // エリア名と BGM
       const area = env.areaAt(this.pos.x, this.pos.z);
       if (area !== this.area) {
         this.area = area;
-        if (area) this.g.ui.showBanner(AREAS[area].name);
+        if (area) this.g.ui.showBanner(this.world.areas[area].name);
         this.g.updateMusic();
       }
       // 洞窟の入口・塔の扉
@@ -404,7 +437,8 @@ export class Field {
   }
 
   updateNpc(n, dt) {
-    const h = n.h, env = n.env === 'field' ? this.world.fieldEnv : this.env;
+    const mp = this.world.maps[n.env === 'field' ? 'main' : n.env];
+    const h = n.h, env = mp ? mp.env : this.env;
     let speed = 0;
     if (n.talking) {
       const want = Math.atan2(this.pos.x - n.pos.x, this.pos.z - n.pos.z);
@@ -427,7 +461,7 @@ export class Field {
       } else {
         n.wait -= dt;
         if (n.wait <= 0) {
-          const a = Math.random() * Math.PI * 2, r = n.env === 'field' ? 1 + Math.random() * 4 : 0.6 + Math.random() * 1.6;
+          const a = Math.random() * Math.PI * 2, r = mp ? 1 + Math.random() * 4 : 0.6 + Math.random() * 1.6;
           n.target = n.home.clone().add(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r));
         }
       }
@@ -459,6 +493,8 @@ export class Field {
     for (const n of this.npcs) if (n.env === this.env.id) check(n.id, n.pos, n.range || 3.0, 'npc', n);
     if (this.inField) {
       for (const s of this.signs) check(s.id, s.pos, 2.4, 'sign');
+      const fp = this.g.flight && this.g.flight.parked;
+      if (fp && fp.map === this.world.map.id) check('Dragon', fp.pos, 7.5, 'dragon');
     } else {
       const env = this.env;
       for (const p of env.pots) if (!(fl.pots && fl.pots[p.id])) check(p.id, p.pos, 1.9, 'pot', p);
@@ -466,6 +502,7 @@ export class Field {
       if (env.orb && env.orb.visible) check('orb', env.orb.getWorldPosition(new THREE.Vector3()).setY(0), 2.8, 'orb');
       if (this.guardian.root.visible) check('guardian', this.guardian.root.position, 5.5, 'guardian');
       if (this.boss.root.visible) check('Boss', this.boss.root.position, 10, 'boss');
+      if (this.ibossObj && this.ibossObj.root.visible) check('IBoss', this.ibossObj.root.position, this.ibossObj.bossInfo.range, 'iboss');
     }
     return best;
   }
@@ -473,11 +510,11 @@ export class Field {
   updateHint() {
     const it = this.g.ui.busy ? null : this.findInteract();
     if (!it) { this.hint.classList.add('hidden'); return; }
-    const hy = { sign: 2.4, boss: 6, guardian: 4.2, chest: 1.6, orb: 2.4, pot: 1.4 }[it.kind] || 2.2;
+    const hy = { sign: 2.4, boss: 6, guardian: 4.2, chest: 1.6, orb: 2.4, pot: 1.4, dragon: 5.5, iboss: 5 }[it.kind] || 2.2;
     const p = it.pos.clone().add(new THREE.Vector3(0, hy, 0)).project(this.camera);
     if (p.z > 1) { this.hint.classList.add('hidden'); return; }
     this.hint.classList.remove('hidden');
-    this.hint.textContent = { sign: 'しらべる', boss: 'たちむかう', guardian: 'たちむかう', chest: 'あける', orb: 'しらべる', pot: 'しらべる' }[it.kind] || 'はなす';
+    this.hint.textContent = { sign: 'しらべる', boss: 'たちむかう', guardian: 'たちむかう', chest: 'あける', orb: 'しらべる', pot: 'しらべる', dragon: 'のる', iboss: 'たちむかう' }[it.kind] || 'はなす';
     this.hint.style.left = ((p.x + 1) / 2) * window.innerWidth + 'px';
     this.hint.style.top = ((1 - p.y) / 2) * window.innerHeight + 'px';
   }
@@ -496,6 +533,7 @@ export class Field {
       if (sp) {
         const tab = env.encounter(sp.x, sp.z, night);
         const key = tab.list[Math.floor(Math.random() * tab.list.length)];
+        if (!this.world.lib.has(MONSTERS[key].model)) return;
         const m = new Monster(this.world.lib, MONSTERS[key]);
         m.key = key;
         m.lv = tab.lv;

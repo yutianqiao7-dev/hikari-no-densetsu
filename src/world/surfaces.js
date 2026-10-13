@@ -128,17 +128,18 @@ const CUT_GLSL = /* glsl */`
 `;
 
 function kindOf(name) {
-  if (/^(Stone|StoneDark|TowerStone|StoneFloor)$/.test(name)) return 'stone';
+  if (/^(Stone|StoneDark|TowerStone|StoneFloor|PyrStone|PyrStoneDark|SmithStone|SmithStoneDark|ChaosStone|ChaosStoneDark|SandFloor|ChaosFloor)$/.test(name)) return 'stone';
   if (/^(CaveRock|CaveRockDark|CaveFloor)$/.test(name)) return 'rock';
   if (/^Roof|TowerRoof/.test(name)) return 'roof';
   if (name === 'WoodFloor') return 'planks';
-  if (/^(Wood|WoodDark|Bark|Door)$/.test(name)) return 'wood';
-  if (/^Plaster$/.test(name)) return 'plaster';
+  if (/^(Wood|WoodDark|Bark|Door|LogWood|LogWoodDark)$/.test(name)) return 'wood';
+  if (/^(Plaster|Adobe|AdobeDark)$/.test(name)) return 'plaster';
   if (/^(Carpet|TowerCarpet)$/.test(name)) return 'fabric';
   return null;
 }
 
-export function enhanceSurface(mat, heightTex, uvParams, cut = false) {
+export function enhanceSurface(mat, heightTex, uvParams, cut = false, offU = null) {
+  const off = offU || { value: new THREE.Vector2() };
   const kind = kindOf(mat.name || '') || (cut ? 'none' : null);
   if (!kind || mat.userData.enhanced) return;
   mat.userData.enhanced = true;
@@ -146,6 +147,7 @@ export function enhanceSurface(mat, heightTex, uvParams, cut = false) {
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uHeightT = { value: heightTex };
     sh.uniforms.uHFp = { value: uvParams };
+    sh.uniforms.uHFo = off;
     if (cut) Object.assign(sh.uniforms, CUT);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vW;\nvarying vec3 vN;')
@@ -153,7 +155,8 @@ export function enhanceSurface(mat, heightTex, uvParams, cut = false) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>\nvarying vec3 vW;\nvarying vec3 vN;\nfloat vRough = 1.0;\n${NOISE}\nuniform sampler2D uHeightT;
 uniform vec4 uHFp;
-float uGround(vec3 p) { return texture2D(uHeightT, ((p.xz + uHFp.x) / uHFp.y + 0.5) / uHFp.z).r; }`)
+uniform vec2 uHFo;
+float uGround(vec3 p) { return texture2D(uHeightT, ((p.xz - uHFo + uHFp.x) / uHFp.y + 0.5) / uHFp.z).r; }`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${cut ? CUT_GLSL : ''}\n${PATTERNS[kind]}`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= vRough;');
     if (cut) sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uCutCam;\nuniform vec3 uCutTarget;\nuniform float uCutOn;\nuniform float uCutR;\nuniform float uCutNear;\nuniform float uCutTop;');

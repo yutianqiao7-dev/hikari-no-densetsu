@@ -30,6 +30,8 @@ export class Humanoid {
   }
 
   /** 単発アクション（Attack, Cast, Hurt, Victory, Down, Talk） */
+  has(name) { return !!this.actions[name]; }
+
   play(name, { loop = false, fade = 0.12, hold = false, timeScale = 1 } = {}) {
     const a = this.actions[name];
     if (!a) return Promise.resolve();
@@ -85,6 +87,8 @@ export class Monster {
     this.root.scale.setScalar(def.scale || 1);
     this.body = this.parts.Body;
     this.baseY = 0;
+    // 竜の鞍は乗るときだけ
+    if (this.parts.Saddle) this.parts.Saddle.visible = false;
   }
 
   hitFlash() { this.flash = 1; }

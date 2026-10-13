@@ -1,4 +1,4 @@
-import { SPELLS, ITEMS, EQUIP, SHOP, MEMBERS, expForLevel, MAX_LV } from './data.js';
+import { SPELLS, ITEMS, EQUIP, SHOP, SHOPS, MEMBERS, expForLevel, MAX_LV } from './data.js';
 import { derived, knownSpells, save, memberName, healAll } from './state.js';
 import { QUALITY, saveQualityKey, loadQualityKey } from '../core/renderer.js';
 
@@ -23,10 +23,11 @@ export async function fieldMenu(g) {
   for (;;) {
     const i = await ui.choose([
       { label: 'じゅもん' }, { label: 'どうぐ' }, { label: 'そうび' }, { label: 'つよさ' }, { label: 'ならびかえ', disabled: s.party.length < 2 },
-      { label: 'せってい' }, { label: 'とじる' },
+      { label: 'せってい' }, { label: s.flags.sequel ? 'ドラゴン' : 'とじる' }, ...(s.flags.sequel ? [{ label: 'とじる' }] : []),
     ], { right: R, top: T, title: s.name, start: last });
     last = i;
-    if (i < 0 || i === 6) return;
+    if (i < 0 || (i === 6 && !s.flags.sequel) || i === 7) return;
+    if (i === 6) { await g.callDragon(); return; }
     if (i === 0) await spellMenu(g);
     if (i === 1) await itemMenu(g);
     if (i === 2) await equipMenu(g);
@@ -224,21 +225,22 @@ export async function inn(g) {
 }
 
 /** 武器・防具・道具屋 */
-export async function shop(g) {
+export async function shop(g, where = 'main') {
   const ui = g.ui, s = g.state;
+  const LIST = SHOPS[where] || SHOP;
   await ui.say({ who: 'しょうにん', text: 'いらっしゃい！ ぶきと ぼうぐと どうぐの みせだよ。' });
   for (;;) {
     const i = await ui.choose([{ label: 'かう' }, { label: 'うる' }, { label: 'やめる' }], { right: R, top: T, title: `${s.gold} G` });
     if (i < 0 || i === 2) break;
     if (i === 0) {
       for (;;) {
-        const items = SHOP.map((k) => {
+        const items = LIST.map((k) => {
           const it = ITEMS[k] || EQUIP[k];
           return { label: it.name, sub: `${it.price}G`, desc: ITEMS[k] ? it.desc : EQUIP[k].atk ? `こうげき力 +${EQUIP[k].atk}` : `しゅび力 +${EQUIP[k].def}` };
         });
         const j = await ui.choose(items, { right: 'calc(8em + var(--sar) + var(--btnw))', top: 'calc(min(60px, 12vh) + var(--sat))', title: `${s.gold} G` });
         if (j < 0) break;
-        const k = SHOP[j];
+        const k = LIST[j];
         const it = ITEMS[k] || EQUIP[k];
         if (s.gold < it.price) { await ui.say({ who: 'しょうにん', text: 'おかねが たりないようだね。' }); continue; }
         s.gold -= it.price;

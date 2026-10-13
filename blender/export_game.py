@@ -107,3 +107,41 @@ with open(os.path.join(OUT, "world.json"), "w", encoding="utf-8") as f:
 if bpy.context.window:
     bpy.context.window.scene = world
 print("export done", {k: len(v) for k, v in scatter.items()}, len(colliders), "colliders", list(markers))
+
+# ---- 第二部の島（build_islands.py）
+for iid in ("desert", "ice", "volcano", "dark"):
+    cname = f"I_{iid}_Terrain"
+    if cname not in bpy.data.collections:
+        continue
+    C = lambda nm: bpy.data.collections[f"I_{iid}_{nm}"]
+    export_glb([C("Terrain"), C("Buildings")], os.path.join(OUT, f"island_{iid}.glb"))
+    t = next(ob for ob in C("Terrain").objects if ob.name.startswith("Terrain"))
+    me = t.data
+    nv = len(me.vertices)
+    n1 = int(round(math.sqrt(nv)))
+    xs = [v.co.x for v in me.vertices]
+    size = round(max(xs) - min(xs), 3)
+    heights = [round(v.co.z + t.location.z, 2) for v in me.vertices]
+    sc = {}
+    for ob in C("Scatter").objects:
+        if ob.instance_type != 'COLLECTION' or not ob.instance_collection:
+            continue
+        p = g(*ob.location)
+        sc.setdefault(ob.instance_collection.name, []).append(p + [round(ob.rotation_euler.z, 3), round(ob.scale.x, 3), round(ob.scale.z, 3)])
+    cols = []
+    pre = f"COL_{iid}__"
+    for ob in C("Colliders").objects:
+        x, y, z = g(*ob.location)
+        cols.append({"name": ob.name[len(pre):], "x": x, "z": z, "hw": round(abs(ob.scale.x), 3), "hd": round(abs(ob.scale.y), 3),
+                     "rot": round(ob.rotation_euler.z, 4), "top": round(ob.location.z + abs(ob.scale.z), 2)})
+    mks = {}
+    pre = f"MK_{iid}__"
+    for ob in C("Markers").objects:
+        x, y, z = g(*ob.location)
+        mks[ob.name[len(pre):]] = {"x": x, "y": y, "z": z, "rot": round(ob.rotation_euler.z, 4)}
+    meta = json.loads(C("Terrain").get("meta", "{}"))
+    data = {"terrain": {"segments": n1 - 1, "size": size, "heights": heights}, "scatter": sc, "colliders": cols, "markers": mks,
+            "areas": meta.get("areas", {}), "npcs": meta.get("npcs", {}), "signs": meta.get("signs", {})}
+    with open(os.path.join(OUT, f"island_{iid}.json"), "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+    print("island exported", iid, {k: len(v) for k, v in sc.items()}, len(cols), "colliders", len(mks), "markers")

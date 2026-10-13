@@ -85,7 +85,8 @@ export class Vegetation {
       const pos = items.map(([x, , z]) => ({ x, z }));
       for (const [x, y, z, , s] of items) {
         if (kind.startsWith('Tree')) this.colliders.push({ x, z, r: 0.45 * s, tree: s, y });
-        else if (kind === 'Rock') this.colliders.push({ x, z, r: 1.0 * s });
+        else if (/^Rock/.test(kind)) this.colliders.push({ x, z, r: 1.0 * s });
+        else if (kind === 'Cactus') this.colliders.push({ x, z, r: 0.5 * s });
       }
       const mk = (proto, shadow) => partsOf(proto).map((p) => {
         const im = new THREE.InstancedMesh(p.geometry, prep(kind, p), items.length);

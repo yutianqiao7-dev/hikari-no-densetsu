@@ -35,10 +35,11 @@ export class Battle {
     let dir;
     const boss = this.opts.boss;
     if (boss) {
-      this.bossObj = boss === 'dragon' ? f.boss : f.guardian;
+      this.bossObj = boss === 'dragon' ? f.boss : boss === 'guardian' ? f.guardian : f.ibossObj;
       const bp = this.bossObj.root.position;
       dir = V(bp.x - heroPos.x, 0, bp.z - heroPos.z).normalize();
-      heroPos.copy(bp).addScaledVector(dir, boss === 'dragon' ? -12.5 : -7.5);
+      this.bigB = this.isBigKind(this.bossObj.kind);
+      heroPos.copy(bp).addScaledVector(dir, this.bigB ? -12.5 * (this.bossObj.def.scale || 1.15) / 1.15 : -(6 + 1.2 * (this.bossObj.def.scale || 1)));
     } else if (this.opts.symbol) {
       const sp = this.opts.symbol.root.position;
       dir = V(sp.x - heroPos.x, 0, sp.z - heroPos.z);
@@ -142,7 +143,7 @@ export class Battle {
     this.center = this.enemies.reduce((a, e) => a.add(e.home), V()).multiplyScalar(1 / this.enemies.length);
     // 戦いの場の周りの木・岩を消して、カメラの邪魔にならないように
     const mid = this.center.clone().lerp(this.center0, 0.5);
-    const rad = this.center.distanceTo(this.center0) * 0.5 + (boss === 'dragon' ? 22 : 15);
+    const rad = this.center.distanceTo(this.center0) * 0.5 + (this.bigB ? 22 : 15);
     this.g.world.veg.setExclude(mid, rad);
     this.fitCam = this.g.camera.clone();
   }
@@ -215,6 +216,9 @@ export class Battle {
     this.placeCoffins(false);
   }
 
+  isBigKind(kind) { return kind === 'Dragon' || kind === 'Zenos' || kind === 'Ifrit'; }
+  isBig(e) { return this.isBigKind(e.m.kind) || !!e.def.big; }
+
   /** p から向き d へ歩ける距離（屋内用） */
   freeDist(p, d, max) {
     const env = this.f.env;
@@ -271,8 +275,8 @@ export class Battle {
   focusPoints(withAllies, actor) {
     const pts = [];
     for (const e of this.alive.length ? this.alive : this.enemies) {
-      const h = e.key === 'dragon' ? 6.2 : ({ Bat: 2.2, Ghost: 2.2, Wisp: 2.4, Gargoyle: 2.6, Skeleton: 2.1, Crab: 1.2, Snake: 1.6 }[e.m.kind] || 1.9) * (e.def.scale || 1);
-      const r = e.key === 'dragon' ? 3.2 : 0.7 * (e.def.scale || 1);
+      const h = this.isBig(e) ? 6.2 * (e.def.scale || 1.15) / 1.15 : ({ Bat: 2.2, Ghost: 2.2, Wisp: 2.4, Gargoyle: 2.6, Skeleton: 2.1, Crab: 1.2, Snake: 1.6 }[e.m.kind] || 1.9) * (e.def.scale || 1);
+      const r = this.isBig(e) ? 3.2 : 0.7 * (e.def.scale || 1);
       pts.push(e.home.clone().addScaledVector(this.right, r), e.home.clone().addScaledVector(this.right, -r), e.home.clone().add(V(0, h, 0)), e.home.clone());
     }
     const allies = withAllies ? this.allies : actor ? [actor] : [];
@@ -316,7 +320,7 @@ export class Battle {
       cam.updateMatrixWorld();
       let hit = false;
       for (const e of this.alive) {
-        v.copy(e.home).add(V(0, e.key === 'dragon' ? 2.5 : 0.6, 0)).project(cam);
+        v.copy(e.home).add(V(0, this.isBig(e) ? 2.5 : 0.6, 0)).project(cam);
         for (const a of this.allies) {
           w.copy(a.home).add(V(0, 2.1, 0)).project(cam);
           if (w.z < v.z && w.y > v.y && Math.abs(w.x - v.x) < 0.16) { hit = true; break; }
@@ -341,7 +345,7 @@ export class Battle {
   // ------------------------------------------------------------ カメラ
   setShot(name, arg) {
     const d = this.dir, r = this.right, c = this.center, h0 = this.center0;
-    const big = this.opts.boss === 'dragon';
+    const big = !!this.bigB;
     const S = {
       intro: () => ({ pos: c.clone().addScaledVector(d, 6).addScaledVector(r, -9).add(V(0, big ? 7 : 4, 0)), look: c.clone().add(V(0, big ? 3 : 0.8, 0)), speed: 1.2 }),
       command: () => {
@@ -392,7 +396,7 @@ export class Battle {
     this.updateCamera(dt);
     if (this.arrow && this.arrowTarget) {
       const t = this.arrowTarget;
-      const hgt = t.isAlly ? 2.4 : (t.key === 'dragon' ? 7 : 2.0 * (t.def.scale || 1));
+      const hgt = t.isAlly ? 2.4 : (this.isBig(t) ? 7 : 2.0 * (t.def.scale || 1));
       const p = t.home.clone().add(V(0, hgt, 0)).project(this.g.camera);
       this.arrow.style.left = ((p.x + 1) / 2) * window.innerWidth + 'px';
       this.arrow.style.top = ((1 - p.y) / 2) * window.innerHeight + 'px';
@@ -423,7 +427,7 @@ export class Battle {
     this.setShot('intro');
     this.camPos.copy(this.shot.pos).add(V(0, 6, 0)).addScaledVector(this.right, -6);
     this.camLook.copy(this.shot.look);
-    audio.play(this.opts.boss || this.opts.group ? 'boss' : 'battle', { fade: 0.1 });
+    audio.play(this.opts.music || (this.opts.boss || this.opts.group ? 'boss' : 'battle'), { fade: 0.1 });
     ui.swirlOut();
     this.g.hud.update();
     this.enemyWin = ui.window('', { id: 'battle-enemies' });
@@ -633,12 +637,12 @@ export class Battle {
       for (let k = 0; k < 3; k++) fx.emit({ pos: a.home.clone().add(V(0, 0.1, 0)), count: 30, color: [0xffe9a0, 0x9fd0ff], speed: 0.8, up: 2.5, life: 1.1, size: 0.22, spread: 1.6, flat: true });
       await a.h.play('Cast', { timeScale: 1.2 });
     }
-    if (act.key === 'heal' || act.key === 'highheal') {
+    if (sp.target === 'ally') {
       const t = target && target.m.hp > 0 ? target : a;
       await this.healFx(t, rint(...sp.power));
       return;
     }
-    if (act.key === 'healall') {
+    if (sp.target === 'allies') {
       this.setShot('party');
       for (const t of this.liveAllies) this.healFx(t, rint(...sp.power), true);
       await sleep(400);
@@ -658,10 +662,11 @@ export class Battle {
       return;
     }
     if (act.key === 'lightbreak') { await this.meleeAttack(a, target, rint(...sp.power), true); return; }
-    if (act.key === 'smashall') {
-      for (const t of this.alive.slice()) {
-        if (!t.alive) continue;
-        await this.meleeAttack(a, t, Math.round(d.atk * sp.melee), false, true);
+    if (sp.melee) {
+      const list = sp.target === 'all' ? this.alive.slice() : [target];
+      for (const t of list) {
+        if (!t || !t.alive) continue;
+        await this.meleeAttack(a, t, Math.round(d.atk * sp.melee), false, list.length > 1);
       }
       return;
     }
@@ -688,7 +693,7 @@ export class Battle {
     const audio = this.g.audio, fx = this.g.fx;
     if (!quick) this.setShot('side');
     const start = a.h.root.position.clone();
-    const reach = target.key === 'dragon' ? 4.2 : 1.5 + (target.def.scale || 1) * 0.4 + (target.def.boss ? 1 : 0);
+    const reach = this.isBig(target) ? 4.2 : 1.5 + (target.def.scale || 1) * 0.4 + (target.def.boss ? 1 : 0);
     const to = target.home.clone().addScaledVector(this.dir, -reach);
     to.y = this.f.env.height(to.x, to.z);
     a.h.speed = 6;
@@ -701,7 +706,7 @@ export class Battle {
     await sleep(special ? 470 : 320);
     const crit = special || Math.random() < 1 / 24;
     const miss = !special && Math.random() < 1 / 30;
-    const hitPos = target.home.clone().add(V(0, target.key === 'dragon' ? 3 : 0.8 * (target.def.scale || 1), 0));
+    const hitPos = target.home.clone().add(V(0, this.isBig(target) ? 3 : 0.8 * (target.def.scale || 1), 0));
     fx.slash(hitPos.clone().addScaledVector(this.dir, -0.3), this.dir.clone().negate(), special ? 0xffe27a : 0xcfe8ff, special ? 2.6 : 1.6);
     if (special) {
       audio.sfx('light');
@@ -730,7 +735,7 @@ export class Battle {
 
   async damageEnemy(t, dmg, crit) {
     const audio = this.g.audio, fx = this.g.fx;
-    const hp = t.home.clone().add(V(0, t.key === 'dragon' ? 3.2 : 0.8 * (t.def.scale || 1), 0));
+    const hp = t.home.clone().add(V(0, this.isBig(t) ? 3.2 : 0.8 * (t.def.scale || 1), 0));
     audio.sfx(crit ? 'crit' : 'hit');
     t.m.hitFlash();
     this.shake = crit ? 1.0 : 0.35;
@@ -748,7 +753,7 @@ export class Battle {
     t.alive = false;
     this.refreshEnemyWin();
     audio.sfx('kill');
-    const big = t.key === 'dragon';
+    const big = this.isBig(t);
     const p = t.home.clone().add(V(0, big ? 3 : 0.7, 0));
     fx.emit({ pos: p, count: big ? 300 : 70, color: big ? [0xffffff, 0xffe080, 0xb080ff] : [0xffffff, 0xc8b8ff, 0x99ccff], speed: big ? 9 : 3, up: 1.5, life: big ? 2.2 : 1.1, size: big ? 0.5 : 0.28, drag: 1.2, spread: big ? 4 : 0.8 });
     if (big) { this.shake = 2; this.g.ui.flashScreen('#fff', 1200, 1); fx.flashLight(p, 0xffffff, 120, 2.5); }
@@ -799,13 +804,13 @@ export class Battle {
       });
     };
     if (key === 'fire') {
-      const t = targets[0], to = t.home.clone().add(V(0, t.key === 'dragon' ? 3 : 0.8, 0));
+      const t = targets[0], to = t.home.clone().add(V(0, this.isBig(t) ? 3 : 0.8, 0));
       audio.sfx('fire');
       await flyTo(to, [0xffaa33, 0xff5511, 0xffee88], 0xff8833, 0.55);
       fx.emit({ pos: to, count: 90, color: [0xffcc55, 0xff6611, 0xff3300], speed: 5, up: 2, life: 0.9, size: 0.6, grow: 0.8 });
       fx.flashLight(to, 0xff7722, 70, 0.6);
     } else if (key === 'blizzard') {
-      const t = targets[0], to = t.home.clone().add(V(0, t.key === 'dragon' ? 3 : 0.6, 0));
+      const t = targets[0], to = t.home.clone().add(V(0, this.isBig(t) ? 3 : 0.6, 0));
       audio.sfx('storm');
       this.setShot('wide');
       const t0 = performance.now();
@@ -824,7 +829,7 @@ export class Battle {
       fx.emit({ pos: to, count: 100, color: [0xffffff, 0xbfe8ff], speed: 6, life: 0.8, size: 0.4 });
       this.g.ui.flashScreen('#dff4ff', 200, 0.5);
     } else if (key === 'lightning') {
-      const t = targets[0], to = t.home.clone().add(V(0, t.key === 'dragon' ? 2 : 0.4, 0));
+      const t = targets[0], to = t.home.clone().add(V(0, this.isBig(t) ? 2 : 0.4, 0));
       this.setShot('wide');
       await sleep(250);
       audio.sfx('thunder');
@@ -865,7 +870,8 @@ export class Battle {
     const def = e.def;
     let mode = 'attack';
     if (def.skill && Math.random() < (def.boss ? 0.45 : 0.3)) mode = def.skill;
-    if (e.key === 'dragon' && mode === 'attack' && Math.random() < 0.4) mode = 'tail';
+    if (e.m.kind === 'Dragon' && mode === 'attack' && Math.random() < 0.4) mode = 'tail';
+    if (def.breath && mode === 'attack' && Math.random() < 0.25) mode = def.skill;
     const target = pick(this.liveAllies);
 
     const hit = async (a, dmg, quiet) => {
@@ -923,6 +929,37 @@ export class Battle {
           await hit(target, Math.max(1, Math.round(base(target) * (def.skillMul || 1.4))));
         });
         break;
+      case 'allhit':
+        await this.log.add(`${e.name}${def.skillText}`, 150);
+        audio.sfx('swing');
+        fx.emit({ pos: e.home.clone().add(V(0, 1, 0)), count: 70, color: [0xffffff, 0xd8ffa0], speed: 6, life: 0.6, size: 0.18, spread: 1.2 });
+        await sleep(350);
+        await all((a) => Math.max(1, Math.round(base(a) * (def.skillMul || 0.6))));
+        break;
+      case 'magicall': {
+        await this.log.add(`${e.name}${def.skillText}`, 150);
+        this.setShot('wide');
+        audio.sfx(def.breath ? 'breath' : 'fire');
+        const col = def.fxColor || [0xffffff, 0xa0c0ff];
+        const from = e.home.clone().add(V(0, this.isBig(e) ? 4.2 : 1.4 * (def.scale || 1), 0));
+        const mid = this.center0.clone().add(V(0, 1.1, 0));
+        e.m.lunge = -0.6;
+        const t0 = performance.now();
+        await new Promise((res) => {
+          const step = () => {
+            const k = Math.min(1, (performance.now() - t0) / 1100);
+            const dv = mid.clone().sub(from).normalize();
+            fx.emit({ pos: from, count: 10, color: col, speed: 2, dir: dv.multiplyScalar(13), life: 0.9, size: 0.8, grow: 2, drag: 0.6 });
+            fx.flashLight(from.clone().lerp(mid, 0.6), col[0], 60, 0.15);
+            if (k < 1) requestAnimationFrame(step); else res();
+          };
+          step();
+        });
+        e.m.lunge = 0;
+        for (const a of this.liveAllies) fx.emit({ pos: a.home.clone().add(V(0, 1, 0)), count: 30, color: col, speed: 3, life: 0.6, size: 0.4 });
+        await all((a) => Math.max(1, Math.round(rint(...def.skillPow) * (a.defending ? 0.5 : 1) * (1 - Math.min(0.3, derived(a.m).def / 900)))));
+        break;
+      }
       case 'spore':
         await this.log.add(`${e.name}は あやしい ほうしを まきちらした！`, 150);
         audio.sfx('miss');
@@ -1009,7 +1046,7 @@ export class Battle {
     const gold = this.enemies.reduce((a, e) => a + e.def.gold, 0);
     this.setShot('victory');
     for (const a of this.liveAllies) a.h.play('Victory', { hold: true });
-    if (this.opts.boss === 'dragon') {
+    if (this.opts.boss === 'dragon' || this.enemies[0].def.final) {
       audio.play('victory');
       await this.log.add(`${this.enemies[0].name}は ひかりの なかへ きえていった……。`, 1500);
       return;

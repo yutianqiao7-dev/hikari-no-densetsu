@@ -119,6 +119,11 @@ export function createWater(hf, heightTex, sky) {
   mesh.renderOrder = 2;
   mesh.frustumCulled = false;
 
+  /** 地形（浅瀬・波打ち際の計算用）を切り替える。null なら一面の深い海 */
+  mesh.setTerrain = (tex, uv) => {
+    if (tex) { uniforms.uHeight.value = tex; uniforms.uHF.value.copy(uv); }
+    else uniforms.uHF.value.set(-1e7, 1, 2, 0);
+  };
   mesh.update = (dt, skySys) => {
     uniforms.uTime.value += dt;
     uniforms.uSunDir.value.copy(skySys.night > 0.5 ? skySys.moonDir : skySys.sunDir);

@@ -40,7 +40,7 @@ export class Heightfield {
 /**
  * Blender の地形メッシュから頂点カラーを取り出し、高さマップと同じ並びのテクスチャとジオメトリを作る
  */
-export function buildTerrain(hf, gltfTerrainMesh) {
+export function buildTerrain(hf, gltfTerrainMesh, sharedIn = null) {
   const W = hf.w;
   const colors = new Float32Array(W * W * 3).fill(0.3);
   const src = gltfTerrainMesh.geometry;
@@ -99,7 +99,7 @@ export function buildTerrain(hf, gltfTerrainMesh) {
   colorTex.magFilter = colorTex.minFilter = THREE.LinearFilter;
   colorTex.needsUpdate = true;
 
-  const shared = {
+  const shared = sharedIn || {
     uTime: { value: 0 },
     uDay: { value: 1 },
     uWind: { value: new THREE.Vector2(0.8, 0.6) },
@@ -142,6 +142,9 @@ export function buildTerrain(hf, gltfTerrainMesh) {
           float f1 = fbm3(tp * 0.22), f2 = fbm3(tp * 0.9 + 4.0), f3 = vnoise(tp * 3.7);
           float strata = sin(vWPos.y * 1.6 + f1 * 7.0) * 0.5 + 0.5;
           vec3 rockC = mix(vec3(0.28, 0.26, 0.25), vec3(0.56, 0.52, 0.47), strata * 0.45 + f2 * 0.55) * (0.82 + f3 * 0.32);
+          // 砂・雪・火山岩など、その場所の色に寄せた岩肌にする
+          vec3 tintC = diffuseColor.rgb * (0.72 + 0.55 * (strata * 0.45 + f2 * 0.55)) * (0.85 + f3 * 0.3);
+          rockC = mix(rockC, tintC, 0.72);
           rockC = mix(rockC, rockC * vec3(0.85, 0.95, 0.75), smoothstep(0.6, 0.8, f1) * 0.5);
           float snowy = smoothstep(0.62, 0.8, min(diffuseColor.r, diffuseColor.b));
           diffuseColor.rgb = mix(diffuseColor.rgb, rockC, steep * 0.92 * (1.0 - snowy * 0.75));

@@ -26,6 +26,9 @@ export class HUD {
 
   /** 地形の色から全体マップを作る（1 回だけ） */
   buildBaseMap(world) {
+    const map = world.map;
+    this.world = world;
+    if (map.baseMap) { this.base = map.baseMap; return; }
     const hf = world.hf, W = hf.w;
     const c = document.createElement('canvas');
     c.width = c.height = W;
@@ -47,7 +50,7 @@ export class HUD {
     g.putImageData(img, 0, 0);
     // 木
     g.fillStyle = 'rgba(20,60,20,0.55)';
-    for (const kind of ['Tree_Broad', 'Tree_Pine']) for (const [x, , z] of world.data.scatter[kind] || []) {
+    for (const kind of Object.keys(world.data.scatter).filter((k) => /^Tree/.test(k))) for (const [x, , z] of world.data.scatter[kind] || []) {
       g.fillRect((x + hf.half) / hf.step - 0.6, (z + hf.half) / hf.step - 0.6, 1.2, 1.2);
     }
     const icon = (x, z, color, size, shape) => {
@@ -58,11 +61,16 @@ export class HUD {
       else g.rect(px - size, pz - size, size * 2, size * 2);
       g.fill(); g.stroke();
     };
-    icon(-40, 60, '#e8e8ff', 6);
-    icon(140, 110, '#ffd27a', 5);
-    icon(70, -215, '#b060ff', 5, 'tri');
+    if (map.id === 'main') {
+      icon(-40, 60, '#e8e8ff', 6);
+      icon(140, 110, '#ffd27a', 5);
+      icon(70, -215, '#b060ff', 5, 'tri');
+    } else {
+      for (const a of Object.values(map.areas)) icon(a.x, a.z, '#ffd27a', 5);
+      for (const [k, m] of Object.entries(map.markers)) if (/^Door_/.test(k)) icon(m.x, m.z, '#b060ff', 5, 'tri');
+    }
     this.base = c;
-    this.world = world;
+    map.baseMap = c;
   }
 
   /** ダンジョンでは配置図から描いたマップに切り替える（null でフィールドに戻す） */

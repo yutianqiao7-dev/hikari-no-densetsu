@@ -10,11 +10,12 @@ import { Audio } from './audio.js';
 import { FX } from './fx.js';
 import { Field } from './game/field.js';
 import { Battle } from './game/battle.js';
-import { TALK, expForLevel, CHESTS, ITEMS, EQUIP } from './game/data.js';
+import { TALK, expForLevel, CHESTS, ITEMS, EQUIP, ISLAND_BOSSES } from './game/data.js';
 import { newState, save, load, hasSave, gainExp, healAll, addMember, memberName } from './game/state.js';
 import { Story } from './game/story.js';
+import { Flight } from './game/flight.js';
 import { fieldMenu, inn, shop } from './game/menu.js';
-import { AREAS } from './world/world.js';
+import { ISLANDS } from './world/world.js';
 import { CUT } from './world/surfaces.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -61,7 +62,10 @@ class Game {
     this.camera.fov = w < h ? 64 : 48;
     this.camera.updateProjectionMatrix();
     this.fx.setViewport(h * this.renderer.r.getPixelRatio());
-    if (this.world && this.world.amb) this.world.amb.setViewport(h * this.renderer.r.getPixelRatio());
+    if (this.world && this.world.maps) {
+      this.world.viewportH = h * this.renderer.r.getPixelRatio();
+      for (const m of Object.values(this.world.maps)) m.amb.setViewport(this.world.viewportH);
+    }
   }
 
   // ------------------------------------------------------------ 起動
@@ -80,7 +84,9 @@ class Game {
     this.hud.buildBaseMap(this.world);
     this.hud.setVisible(false);
     this.field = new Field(this);
+    this.world.onMapLoaded = (map) => this.field.addIslandNpcs(map);
     this.story = new Story(this);
+    this.flight = new Flight(this);
     const st = this.world.marker('Start');
     this.field.place(st.pos, st.rot);
     this.sky.update(0, this.field.pos, this.camera);
@@ -94,6 +100,14 @@ class Game {
     setTimeout(() => ld.remove(), 800);
     const dev = new URLSearchParams(location.search);
     if (dev.has('dev')) {
+      window.cap = (n) => new Promise((res) => { window.__capDone = res; window.__capName = n; });
+      window.view = async (n, px, pz, lx, lz, hh = 14) => {
+        const V3 = THREE.Vector3, hf = this.world.hf;
+        this.mode = 'cutscene';
+        this.cine = { pos: new V3(px, hf.height(px, pz) + hh, pz), look: new V3(lx, hf.height(lx, lz) + 4, lz), speed: 60 };
+        await sleep(1500);
+        await window.cap(n);
+      };
       this.state = newState('ユウト');
       this.state.flags.metKing = true;
       if (dev.has('party')) for (const id of dev.get('party').split(',')) addMember(this.state, id);
@@ -101,7 +115,16 @@ class Game {
       if (dev.has('ev')) for (const k of dev.get('ev').split(',')) this.state.flags['ev_' + k] = true;
       healAll(this.state);
       if (dev.has('t')) this.sky.time = +dev.get('t');
+      if (dev.has('sequel')) { this.state.flags.cleared = this.state.flags.sequel = true; }
+      if (dev.has('orbs')) for (const k of dev.get('orbs').split(',')) this.state.flags['orb_' + k] = true;
+      if (dev.has('map') && dev.get('map') !== 'main') {
+        await this.world.ensureMap(dev.get('map'));
+        this.switchMap(dev.get('map'));
+        const lm = this.world.marker('Landing') || this.world.marker('Start');
+        if (lm) this.field.place(lm.pos, lm.rot);
+      }
       if (dev.has('x')) this.field.place(new THREE.Vector3(+dev.get('x'), 0, +dev.get('z')), +(dev.get('r') || 0));
+      if (this.state.flags.sequel) this.parkDragonNear();
       this.sky.envTimer = 999;
       this.enterField();
       if (dev.has('battle')) {
@@ -116,6 +139,7 @@ class Game {
       if (dev.has('orb')) { this.state.flags.orb = this.state.flags.guardian = true; }
       if (dev.has('area')) setTimeout(() => this.enterInterior(dev.get('area'), dev.get('at') || 'S', true), 300);
       if (dev.has('boss')) setTimeout(async () => { await this.enterInterior('tower3', 'D', true); this.startBattle(null, 'dragon'); }, 300);
+      if (dev.has('fly')) setTimeout(() => this.flight.takeoff(), 600);
       this.field.resetFollowers();
       return;
     }
@@ -139,6 +163,9 @@ class Game {
       const mv = this.input.poll(dt, busy);
       f.update(dt, this.t, busy ? { x: 0, y: 0, len: 0 } : mv, this.input.cam);
       if (this.state) this.state.playTime += dt;
+    } else if (this.mode === 'flight') {
+      this.flight.update(dt);
+      if (this.state) this.state.playTime += dt;
     } else if (this.mode === 'battle-trans') {
       f.hero.speed = 0;
       f.hero.update(dt);
@@ -160,8 +187,9 @@ class Game {
     }
     for (const fn of this.tickers) fn(dt);
     if (this.mode === 'field' && this.state) this.story.check();
-    const focus = this.mode === 'title' ? new THREE.Vector3(-40, 7, 60) : f.pos;
-    this.sky.update(dt, focus, this.camera);
+    this.flight.updateParked(dt);
+    const focus = this.mode === 'title' ? new THREE.Vector3(-40, 7, 60) : this.mode === 'flight' ? this.flight.pos : f.pos;
+    if (this.mode !== 'flight') this.sky.update(dt, focus, this.camera);
     // 時間帯の色調（夜は青く・彩度を落とす、夕方は暖色）
     const gu = this.renderer.grade.uniforms, sk = this.sky;
     gu.uSaturation.value = 1.12 - sk.night * 0.36 + sk.dusk * 0.05;
@@ -176,11 +204,18 @@ class Game {
     CUT.uCutR.value = this.battle ? 4.4 : 3.2;
     CUT.uCutNear.value = this.battle ? 3.6 : 1.6;
     CUT.uCutTop.value = this.battle ? 0 : 1.2;
-    this.world.update(dt, this.t, this.camera.position, f.pos);
+    this.world.update(dt, this.t, this.camera.position, this.mode === 'flight' ? this.flight.pos : f.pos);
     this.fx.update(dt);
     this.ambient(dt);
     if (this.mode === 'field' || this.mode === 'cutscene') this.hud.tick(f, this.sky);
     this.renderer.render(this.scene, this.camera, this.t);
+    // 開発用：画面を画像として送る（?dev のとき window.cap(名前)）
+    if (window.__capName) {
+      const n = window.__capName;
+      window.__capName = null;
+      const d = this.renderer.r.domElement.toDataURL('image/jpeg', 0.85);
+      fetch('http://127.0.0.1:5199/?n=' + n, { method: 'POST', body: d }).then(() => window.__capDone && window.__capDone()).catch(() => {});
+    }
   }
 
   /** 夜のホタル・塔のまわりの魔力など */
@@ -211,6 +246,7 @@ class Game {
   onKey(k) {
     this.audio.unlock();
     if (this.mode === 'title' && this.titleKey) { this.titleKey(k); return; }
+    if (this.mode === 'flight') { this.flight.onKey(k); return; }
     if (this.ui.busy) { this.ui.key(k); return; }
     if (this.mode !== 'field') return;
     if (k === 'confirm') this.interact();
@@ -279,10 +315,20 @@ class Game {
         : '（WASD/矢印で いどう、 マウスドラッグで カメラ、 Enter/Z で はなす、 Esc/M で メニュー）']);
   }
 
-  continueGame() {
+  async continueGame() {
     const s = load();
     this.state = { ...newState(s.name), ...s };
     if (s.time != null) { this.sky.time = s.time; this.sky.envTimer = 999; }
+    if (s.map && s.map !== 'main') {
+      this.mode = 'cutscene';
+      this.ui.showBanner('しまを よみこんでいます…');
+      await this.world.ensureMap(s.map);
+      this.switchMap(s.map);
+    }
+    if (s.flags && s.flags.sequel && s.dragon) {
+      if (s.dragon.map !== 'main') await this.world.ensureMap(s.dragon.map);
+      this.flight.park(s.dragon.map, new THREE.Vector3(s.dragon.x, 0, s.dragon.z), s.dragon.rot);
+    } else if (s.flags && s.flags.sequel) this.parkDragonNear();
     if (s.area && this.world.interiors.floors[s.area]) {
       this.enterField();
       this.enterInterior(s.area, s.pos, true);
@@ -307,13 +353,19 @@ class Game {
     s.pos = { x: this.field.pos.x, z: this.field.pos.z, rot: this.field.facing };
     s.time = this.sky.time;
     s.area = this.field.inField ? null : this.field.env.id;
+    s.map = this.world.map.id;
+    const pk = this.flight && this.flight.parked;
+    s.dragon = pk ? { map: pk.map, x: pk.pos.x, z: pk.pos.z, rot: pk.rot } : null;
     return s;
   }
 
   fieldMusic() {
     if (!this.field.inField) return { cave: 'cave', tower: 'tower', castle: 'castle', room: 'town' }[this.field.env.style] || 'town';
     const a = this.field.area;
-    if (a && AREAS[a].music) return AREAS[a].music;
+    const ar = a && this.world.areas[a];
+    if (ar && ar.music) return ar.music;
+    const isl = this.world.map.id;
+    if (isl !== 'main') return ISLANDS[isl].music;
     return this.sky.night > 0.55 ? 'field_night' : 'field';
   }
 
@@ -323,6 +375,71 @@ class Game {
   }
 
   addItem(k, n) { this.state.items[k] = (this.state.items[k] || 0) + n; }
+
+  /** いる島を切り替える（フィールドの env・ミニマップ・入口などをまとめて） */
+  switchMap(id) {
+    const w = this.world;
+    w.useMap(id);
+    this.hud.buildBaseMap(w);
+    this.field.setEnv(w.fieldEnv);
+    this.field.refreshMapPoints();
+    this.field.area = undefined;
+  }
+
+  /** 竜を勇者の近くに待たせる（着地点がなければ勇者のそば） */
+  parkDragonNear() {
+    const f = this.field, w = this.world;
+    const lm = w.marker('DragonPark');
+    if (lm) { this.flight.park(w.map.id, lm.pos, lm.rot); return; }
+    const p = f.pos.clone().add(new THREE.Vector3(Math.sin(f.facing + 1.57) * 10, 0, Math.cos(f.facing + 1.57) * 10));
+    this.flight.park(w.map.id, p, f.facing);
+  }
+
+  /** 島のダンジョンの中ボス・ボスに話しかけた */
+  async islandBossEvent() {
+    if (this.mode !== 'field') return;
+    const m = this.field.ibossObj, ib = m.bossInfo;
+    this.mode = 'cutscene';
+    this.audio.sfx('roar');
+    m.lunge = 1;
+    await this.ui.say(ib.lines);
+    m.lunge = 0;
+    if (ib.final) await this.story.beforeZenos();
+    this.mode = 'field';
+    await this.startBattle(null, ib.key, { music: ib.final ? 'final' : 'boss2' });
+  }
+
+  async rideDragon() {
+    if (this.mode !== 'field') return;
+    await this.ui.say([{ who: 'ヴァルザード', text: 'わが せなかに のるがよい。 どこへ ゆく？' }]);
+    if (await this.ui.yesno()) await this.flight.takeoff();
+  }
+
+  /** メニュー「ドラゴン」：竜を よぶ */
+  async callDragon() {
+    const f = this.field;
+    if (!f.inField) { await this.ui.say('ここでは ヴァルザードを よべない。'); return; }
+    this.audio.sfx('roar');
+    this.parkDragonNear();
+    const d = this.flight.dragon;
+    // 空から舞い降りる
+    const to = d.root.position.clone();
+    to.y = f.env.height(to.x, to.z);
+    const from = to.clone().add(new THREE.Vector3(0, 40, 0));
+    const t0 = performance.now();
+    this.mode = 'cutscene';
+    await new Promise((res) => {
+      const step = () => {
+        const k = Math.min(1, (performance.now() - t0) / 1800);
+        this.flight.parked.pos.copy(from).lerp(to, 1 - Math.pow(1 - k, 3));
+        if (k < 1) requestAnimationFrame(step); else res();
+      };
+      step();
+    });
+    this.flight.parked.pos.copy(to);
+    this.mode = 'field';
+    await this.rideDragon();
+  }
 
   // ------------------------------------------------------------ 会話
   async interact() {
@@ -334,13 +451,19 @@ class Game {
     if (it.kind === 'pot') { await this.searchPot(it.obj); return; }
     if (it.kind === 'orb') { await this.orbEvent(); return; }
     if (it.kind === 'guardian') { await this.guardianEvent(); return; }
-    if (it.kind === 'sign') { await this.ui.say(TALK[it.id](this)); return; }
+    if (it.kind === 'sign') {
+      const st = (this.world.data.signs || {})[it.id];
+      await this.ui.say(TALK[it.id] ? TALK[it.id](this) : [{ text: st || '……。' }]);
+      return;
+    }
+    if (it.kind === 'dragon') { await this.rideDragon(); return; }
+    if (it.kind === 'iboss') { await this.islandBossEvent(); return; }
     const n = it.obj;
     n.talking = true;
     n.h.play('Talk', { loop: true, fade: 0.3 });
     try {
-      if (it.id === 'Innkeeper') await inn(this);
-      else if (it.id === 'Merchant') await shop(this);
+      if (/^Innkeeper/.test(it.id)) await inn(this);
+      else if (/^Merchant/.test(it.id)) await shop(this, this.world.map.id);
       else {
         const lines = TALK[it.id] ? TALK[it.id](this) : [{ text: '……。' }];
         await this.ui.say(lines, { onAction: async (a) => { if (a === 'save') save(this.snapshot()); } });
@@ -385,6 +508,16 @@ class Game {
       healAll(s);
       s.gold = Math.floor(s.gold / 2);
       this.field.clearMonsters();
+      if (this.world.map.id !== 'main' && this.world.marker('Camp')) {
+        const c = this.world.marker('Camp');
+        this.field.place(c.pos, c.rot);
+        this.mode = 'field';
+        this.hud.update();
+        this.updateMusic(true);
+        await this.ui.fadeTo(0, 1200);
+        await this.ui.say([{ text: `${s.name}たちは キャンプで めを さました……。` }, { text: '（もっていた ゴールドが はんぶんに なった）' }]);
+        return;
+      }
       await this.toKing();
       this.mode = 'field';
       this.hud.update();
@@ -398,6 +531,20 @@ class Game {
       return;
     }
     if (result === 'win' && boss === 'dragon') { await this.ending(); return; }
+    if (result === 'win' && boss && boss !== 'guardian') {
+      const ib = Object.values(ISLAND_BOSSES).find((b) => b.key === boss);
+      if (ib) {
+        this.state.flags[ib.flag] = true;
+        this.field.placeBosses();
+        this.mode = 'field';
+        this.field.snapCamera();
+        this.updateMusic(true);
+        this.hud.update();
+        if (ib.final) { await this.story.finalEnding(); return; }
+        if (ib.orb) await this.story.spiritEvent(ib.orb);
+        return;
+      }
+    }
     if (result === 'win' && boss === 'guardian') {
       this.state.flags.guardian = true;
       this.mode = 'field';
@@ -632,6 +779,7 @@ class Game {
   /** 玉座の間で王さまの前に立つ（全滅・エンディング） */
   async toKing() {
     if (!this.field.inField) this.leaveInterior();
+    if (this.world.map.id !== 'main') this.switchMap('main');
     const floor = this.world.interiors.floors.keep;
     const k = floor.spots.K[0];
     await this.enterInterior('keep', { x: k[0], z: k[1] + 2.8, rot: Math.PI }, true);
@@ -670,7 +818,7 @@ class Game {
     this.audio.sfx('spell');
     await this.ui.fadeTo(1, 700);
     if (!this.field.inField) this.leaveInterior();
-    const st = this.world.marker('Start');
+    const st = this.world.map.id !== 'main' ? (this.world.marker('Camp') || this.world.marker('Landing')) : this.world.marker('Start');
     this.field.place(st.pos, st.rot);
     this.field.clearMonsters();
     this.updateMusic(true);
