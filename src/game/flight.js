@@ -35,7 +35,7 @@ export class Flight {
 
   /** 闇の島の結界（ほうじゅが三つそろうまで）：紫に揺らめく半球 */
   ensureBarrier() {
-    if (this.barrier) return this.barrier;
+    if (this.dome) return this.dome;
     const geo = new THREE.SphereGeometry(255, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2);
     const mat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
@@ -52,7 +52,7 @@ export class Flight {
     m.renderOrder = 6;
     m.visible = false;
     this.g.scene.add(m);
-    this.barrier = m;
+    this.dome = m;
     return m;
   }
 
@@ -314,7 +314,7 @@ export class Flight {
     this.active = false;
     this.landing = null;
     this.hint.classList.add('hidden');
-    if (this.barrier) this.barrier.visible = false;
+    if (this.dome) this.dome.visible = false;
     for (const h of this.riders()) h.stopOneShot(0.01);
     w.useMap(map.id);
     g.hud.buildBaseMap(w);
