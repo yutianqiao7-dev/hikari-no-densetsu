@@ -387,3 +387,14 @@ Object.assign(TALK, {
   RebelGirl: () => [{ who: 'しょうじょ', text: 'いつか この しまにも あかるい そらが もどるよね？' }],
   RebelOld: () => [{ who: 'ろうじん', text: 'むかし この しまは 「ほしの しま」と よばれる うつくしい しまじゃった……。' }],
 });
+
+// 第一部クリア直後（Lv 16 前後）でも進めるよう、最初の島ほど少しやさしく
+for (const [keys, k] of [[['sandpurun', 'cactus', 'scorpion', 'mummy', 'sandsnake', 'giltab', 'anubis'], { atk: 0.82, def: 0.85, hp: 0.85 }],
+  [['icepurun', 'snowman', 'icewolf', 'penguin', 'icewraith', 'yeti', 'glacia'], { atk: 0.9, def: 0.92, hp: 0.9 }]]) {
+  for (const id of keys) {
+    const m = MONSTERS[id];
+    m.atk = Math.round(m.atk * k.atk);
+    m.def = Math.round(m.def * k.def);
+    m.hp = Math.round(m.hp * k.hp);
+  }
+}
