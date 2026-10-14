@@ -42,10 +42,11 @@ export class Humanoid {
     this.root.updateMatrixWorld(true);
     const e = fa.getWorldPosition(new THREE.Vector3()), w = hand.getWorldPosition(new THREE.Vector3());
     const ax = w.sub(e).normalize().cross(new THREE.Vector3(0, 0, -1)).normalize();
-    const qW = new THREE.Quaternion().setFromAxisAngle(ax, HOLD_BEND);
+    const qW = new THREE.Quaternion().setFromAxisAngle(ax, -HOLD_BEND);
     const wr = fa.getWorldQuaternion(new THREE.Quaternion());
     this.holdQ = wr.clone().invert().multiply(qW).multiply(wr);
     this.holdBone = fa;
+    this.holdBase = fa.quaternion.clone();
   }
 
   setWeapon(drawn) {
@@ -89,8 +90,11 @@ export class Humanoid {
     if (A.Idle) A.Idle.setEffectiveWeight(wIdle * k);
     if (A.Walk) { A.Walk.setEffectiveWeight(wWalk * k); A.Walk.timeScale = Math.max(0.5, s / 1.45); }
     if (A.Run) { A.Run.setEffectiveWeight(wRun * k); A.Run.timeScale = Math.max(0.7, s / 4.6); }
+    // ミキサーは値が変わらないフレームでは骨を書きかえないので、足した曲げを先に取りのぞく（でないと積み重なって回る）
+    const hb = this.holdBone;
+    if (hb) hb.quaternion.copy(this.holdBase);
     this.mixer.update(dt);
-    if (this.holdBone) this.holdBone.quaternion.multiply(this.holdQ);
+    if (hb) { this.holdBase.copy(hb.quaternion); hb.quaternion.multiply(this.holdQ); }
   }
 }
 
