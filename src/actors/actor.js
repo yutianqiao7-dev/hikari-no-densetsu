@@ -4,6 +4,8 @@ const angDiff = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d 
 export { angDiff };
 
 /** スキニングされた人型。Idle/Walk/Run を速度でブレンドし、単発アクションも再生する */
+const HOLD_BEND = 1.2; // blender/build_characters.py と同じ
+
 export class Humanoid {
   constructor(lib, model) {
     const h = lib.humanoid(model);
@@ -22,6 +24,28 @@ export class Humanoid {
     }
     if (this.actions.Idle) this.actions.Idle.time = Math.random() * 2;
     this.setWeapon(false);
+    if (['Staff', 'Axe', 'Spear'].some((k) => this.parts[k])) this.setupHold();
+  }
+
+  /**
+   * 杖・斧・槍を持つキャラは、右ひじを前に曲げて柄を縦に握る（Blender 側の HOLD_BEND と同じ角度）。
+   * 共通のアニメーションのあとに、ひじの曲げを毎フレーム足す。
+   */
+  setupHold() {
+    let fa = null, hand = null;
+    this.root.traverse((o) => {
+      if (!o.isBone) return;
+      if (!fa && /^forearmR/.test(o.name)) fa = o;
+      if (!hand && /^handR/.test(o.name)) hand = o;
+    });
+    if (!fa || !hand) return;
+    this.root.updateMatrixWorld(true);
+    const e = fa.getWorldPosition(new THREE.Vector3()), w = hand.getWorldPosition(new THREE.Vector3());
+    const ax = w.sub(e).normalize().cross(new THREE.Vector3(0, 0, -1)).normalize();
+    const qW = new THREE.Quaternion().setFromAxisAngle(ax, HOLD_BEND);
+    const wr = fa.getWorldQuaternion(new THREE.Quaternion());
+    this.holdQ = wr.clone().invert().multiply(qW).multiply(wr);
+    this.holdBone = fa;
   }
 
   setWeapon(drawn) {
@@ -66,6 +90,7 @@ export class Humanoid {
     if (A.Walk) { A.Walk.setEffectiveWeight(wWalk * k); A.Walk.timeScale = Math.max(0.5, s / 1.45); }
     if (A.Run) { A.Run.setEffectiveWeight(wRun * k); A.Run.timeScale = Math.max(0.7, s / 4.6); }
     this.mixer.update(dt);
+    if (this.holdBone) this.holdBone.quaternion.multiply(this.holdQ);
   }
 }
 

@@ -709,6 +709,9 @@ def build_shell(cfg, body_ob, region_fn, thickness, m, name, solid=0.006):
     return ob
 
 
+HOLD_BEND = 1.2   # 武器を持つ右ひじの曲げ（src/actors/actor.js と同じ値）
+
+
 def build_gear(cfg, surf):
     name = cfg['name']
     gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
@@ -811,6 +814,17 @@ def build_gear(cfg, surf):
     hr_w = Vector(BMAP['forearm.R'][2])
     hd = (Vector(BMAP['hand.R'][2]) - hr_w).normalized()
     palm = hr_w + hd * 0.05
+    # 杖・斧・槍は「ひじを前に曲げて握った姿勢」で縦にまっすぐ持つように作り、
+    # 休めの姿勢（骨格の初期姿勢）に戻して手の骨に付ける。ゲーム側で同じ角度だけひじを曲げる（HOLD_BEND）
+    el_w = Vector(BMAP['forearm.R'][1])
+    hold_ax = (hr_w - el_w).normalized().cross(Vector((0, 1, 0))).normalized()
+    hold_q = Quaternion(hold_ax, -HOLD_BEND)
+    hpalm = el_w + hold_q @ (palm - el_w)
+    unbend = hold_q.inverted()
+
+    def held(mb):
+        mb.deform(lambda co: el_w + unbend @ (Vector(co) - el_w))
+
     if cfg.get('sword'):
         mb = CMB()
         mb.add('cyl', leather, loc=palm, rot=(math.pi / 2, 0, 0), r1=0.014, r2=0.014, depth=0.11, seg=12)
@@ -850,8 +864,8 @@ def build_gear(cfg, surf):
     if cfg.get('axe'):
         mb = CMB()
         iron = mat("AxeIron", (0.62, 0.64, 0.68), 0.3, 1.0)
-        mb.add('cyl', wood, loc=palm + Vector((0, 0, 0.12)), r1=0.022, r2=0.02, depth=1.05, seg=10)
-        top = palm + Vector((0, 0, 0.55))
+        mb.add('cyl', wood, loc=hpalm + Vector((0, 0, 0.12)), r1=0.022, r2=0.02, depth=1.05, seg=10)
+        top = hpalm + Vector((0, 0, 0.55))
         for sd in (-1, 1):
             # 三日月形の刃（前後に）
             pts = [(0, 0, 0.13), (0, sd * 0.16, 0.2), (0, sd * 0.27, 0.08), (0, sd * 0.29, -0.06), (0, sd * 0.22, -0.18), (0, 0, -0.1)]
@@ -864,22 +878,24 @@ def build_gear(cfg, surf):
             mb.poly([tuple(Vector(v) - Vector((0.0125, 0, 0))) for v in verts], faces, iron, smooth=False)
         mb.add('cube', gold, loc=top, scale=(0.06, 0.06, 0.12))
         mb.add('cyl', iron, loc=top + Vector((0, 0, 0.17)), r1=0.025, r2=0.0, depth=0.12, seg=6)
+        held(mb)
         ob = mb.build(name + "_Axe", COLL)
         rig_rigid(ob, 'hand.R')
         out.append(ob)
     if cfg.get('spear'):
         mb = CMB()
-        mb.add('cyl', wood, loc=palm + Vector((0, 0, 0.35)), r1=0.014, r2=0.013, depth=2.0, seg=10)
-        mb.add('cyl', silver, loc=palm + Vector((0, 0, 1.43)), r1=0.035, r2=0.0, depth=0.18, seg=4, scale=(1, 0.3, 1))
-        mb.add('cube', gold, loc=palm + Vector((0, 0, 1.33)), scale=(0.07, 0.02, 0.02))
+        mb.add('cyl', wood, loc=hpalm + Vector((0, 0, 0.35)), r1=0.014, r2=0.013, depth=2.0, seg=10)
+        mb.add('cyl', silver, loc=hpalm + Vector((0, 0, 1.43)), r1=0.035, r2=0.0, depth=0.18, seg=4, scale=(1, 0.3, 1))
+        mb.add('cube', gold, loc=hpalm + Vector((0, 0, 1.33)), scale=(0.07, 0.02, 0.02))
+        held(mb)
         ob = mb.build(name + "_Spear", COLL)
         rig_rigid(ob, 'hand.R')
         out.append(ob)
     if cfg.get('staff'):
         mb = CMB()
         kind = cfg['staff']
-        mb.add('cyl', gold if kind == 'gold' else wood, loc=palm + Vector((0, 0, 0.25)), r1=0.013, r2=0.016, depth=1.45, seg=10)
-        top = palm + Vector((0, 0, 0.98))
+        mb.add('cyl', gold if kind == 'gold' else wood, loc=hpalm + Vector((0, 0, 0.25)), r1=0.013, r2=0.016, depth=1.45, seg=10)
+        top = hpalm + Vector((0, 0, 0.98))
         if kind == 'gold':
             mb.add('sphere', gold, loc=top, scale=(0.04, 0.04, 0.04))
             mb.add('sphere', mat("Ruby", (0.9, 0.05, 0.1), 0.1), loc=top + Vector((0, 0, 0.05)), scale=(0.03, 0.03, 0.04))
@@ -888,6 +904,7 @@ def build_gear(cfg, surf):
                     [0.016, 0.014, 0.012, 0.008], wood, seg=10)
             mb.add('ico', mat("MagicGlow", (0.75, 0.35, 1.0), 0.2, emit=(0.75, 0.30, 1.0), emit_strength=4.0),
                    loc=top + Vector((0, 0, 0.05)), r=0.032, sub=2)
+        held(mb)
         ob = mb.build(name + "_Staff", COLL)
         rig_rigid(ob, 'hand.R')
         out.append(ob)

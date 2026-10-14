@@ -115,13 +115,10 @@ export class Battle {
       }
       const ne = keys.length;
       const front = (f.inField ? 6.6 : 5.6) + (ne > 3 ? 1 : 0);
+      const spots = f.inField ? null : this.enemySlots(heroPos, dir, keys);
       keys.forEach((k, i) => {
-        const lat = (i - (ne - 1) / 2) * (f.inField ? 2.8 : 2.1);
-        let p;
-        for (let k = 1; k > 0.2; k -= 0.15) {
-          p = heroPos.clone().addScaledVector(dir, (front + Math.abs(lat) * 0.22) * (0.7 + 0.3 * k)).addScaledVector(this.right, lat * k);
-          if (f.inField || this.clearAt(p, 0.9)) break;
-        }
+        const lat = (i - (ne - 1) / 2) * 2.8;
+        const p = spots ? spots[i] : heroPos.clone().addScaledVector(dir, front + Math.abs(lat) * 0.22).addScaledVector(this.right, lat);
         p.y = env.height(p.x, p.z);
         const mon = new Monster(this.g.world.lib, MONSTERS[k]);
         mon.root.position.copy(p);
@@ -227,6 +224,67 @@ export class Battle {
     return s;
   }
 
+  /**
+   * 屋内の敵の立ち位置：通路の幅に合わせて横に並べ、入りきらなければ奥の列へ。
+   * 体の大きさに応じて間をあけ、敵同士が重ならないようにする。
+   */
+  enemySlots(heroPos, dir, keys) {
+    const size = (k) => 0.6 + 0.5 * (MONSTERS[k].scale || 1);
+    const cands = [];
+    for (let row = 0; row < 5; row++) {
+      const d = 5.0 + row * 2.6;
+      // せまい通路（はば 5m 未満）では、左右のかべぎわに交互に立たせて ジグザグに並べる
+      const mid = heroPos.clone().addScaledVector(dir, d);
+      const halfW = Math.min(this.freeDist(mid, this.right, 4), this.freeDist(mid, this.right.clone().negate(), 4));
+      let lats;
+      if (halfW < 2.5) {
+        const w = Math.max(halfW - 0.5, 0.4), sg = row % 2 ? -1 : 1;
+        lats = [sg * w, -sg * w, 0];
+      } else lats = [...Array(9)].map((_, c) => (c % 2 ? 1 : -1) * Math.ceil(c / 2) * 1.05);
+      for (const lat of lats) cands.push({ p: mid.clone().addScaledVector(dir, Math.abs(lat) * 0.15).addScaledVector(this.right, lat), row, lat });
+    }
+    // 勇者から床つづきで見える場所だけ（かべの向こうの別の通路に立たせない）
+    const env = this.f.env;
+    for (const c of cands) {
+      const n = Math.ceil(heroPos.distanceTo(c.p) / 0.35);
+      c.seen = true;
+      for (let i = 1; i <= n && c.seen; i++) {
+        const t = i / n;
+        if (!env.walkable(heroPos.x + (c.p.x - heroPos.x) * t, heroPos.z + (c.p.z - heroPos.z) * t)) c.seen = false;
+      }
+    }
+    const out = [];
+    for (const k of keys) {
+      const r = size(k);
+      let pick = null;
+      // 1回目は手前の敵のま後ろ（カメラから隠れる位置）を避ける。
+      // 2回目は せまい通路用に、かべぎわまで寄って左右にずらす。3回目はま後ろも許す
+      for (const [strict, wall] of [[true, Math.min(r * 0.7, 1.2)], [true, 0.3], [false, Math.min(r * 0.7, 1.2)]]) {
+        for (const c of cands) {
+          if (c.used || !this.clearAt(c.p, wall) || !c.seen) continue;
+          if (out.some((o) => o.p.distanceTo(c.p) < o.r + r)) continue;
+          if (strict && out.some((o) => o.row < c.row && Math.abs(o.lat - c.lat) < (o.r + r) * 0.5)) continue;
+          pick = c;
+          break;
+        }
+        if (pick) break;
+      }
+      if (!pick) {
+        // どうしても空かなければ、ほかの敵からいちばん遠い候補
+        let best = -1;
+        for (const c of cands) {
+          if (c.used || !c.seen) continue;
+          const dmin = Math.min(...out.map((o) => o.p.distanceTo(c.p) - o.r), 99);
+          if (dmin > best) { best = dmin; pick = c; }
+        }
+      }
+      pick = pick || cands[out.length];
+      pick.used = true;
+      out.push({ p: pick.p.clone(), r, row: pick.row, lat: pick.lat });
+    }
+    return out.map((o) => o.p);
+  }
+
   /** 半径 r の円が床の上に収まるか（屋内用） */
   clearAt(p, r) {
     const env = this.f.env;
@@ -249,8 +307,17 @@ export class Battle {
     const cands = [p0.clone()];
     if (env.cell) {
       const i = Math.floor((p0.x - env.ox) / env.cell), j = Math.floor((p0.z - env.oz) / env.cell);
-      const [cx, cz] = env.center(i, j);
-      cands.push(V(cx, p0.y, cz));
+      // せまい通路で戦うと敵が一列に重なるので、床つづきの近くのマス（2マス以内）にも移れるようにする
+      for (let di = -2; di <= 2; di++) {
+        for (let dj = -2; dj <= 2; dj++) {
+          const [cx, cz] = env.center(i + di, j + dj);
+          const c = V(cx, p0.y, cz);
+          const n = Math.ceil(p0.distanceTo(c) / 0.35);
+          let ok = true;
+          for (let k = 1; k <= n && ok; k++) ok = env.walkable(p0.x + (c.x - p0.x) * k / n, p0.z + (c.z - p0.z) * k / n);
+          if (ok) cands.push(c);
+        }
+      }
     }
     let best = { p: p0, d: d0, s: -1e9 };
     for (const p of cands) {
