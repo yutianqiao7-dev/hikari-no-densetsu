@@ -2,6 +2,88 @@ import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 /**
+ * キャラの素材の細かな質感（scripts/gen_textures.py の布・革・金属・髪・肌）。
+ * 動いてもずれないよう、骨格の初期姿勢の座標で 3 方向から貼り、凹凸は画面上の高さの変化から作る。
+ */
+const DETAIL = {
+  cloth: { size: 0.12, bump: 0.6, alb: 0.55 },
+  leather: { size: 0.25, bump: 0.8, alb: 0.6 },
+  metal: { size: 0.5, bump: 0.7, alb: 0.5 },
+  hair: { size: 0.09, bump: 0.9, alb: 0.75 },
+  skin: { size: 0.08, bump: 0.25, alb: 0.25 },
+};
+const detailTex = {};
+function detailSet(kind) {
+  if (detailTex[kind]) return detailTex[kind];
+  const L = new THREE.TextureLoader();
+  const base = `${import.meta.env.BASE_URL}assets/tex/${kind}`;
+  const load = (suf, srgb) => {
+    const t = L.load(`${base}_${suf}.jpg`);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    t.anisotropy = 8;
+    return t;
+  };
+  return (detailTex[kind] = { a: load('a', true), m: load('m', false) });
+}
+
+function addDetail(mat, kind) {
+  const D = DETAIL[kind];
+  const tex = detailSet(kind);
+  const prev = mat.onBeforeCompile;
+  mat.onBeforeCompile = (sh, r) => {
+    if (prev) prev(sh, r);
+    sh.uniforms.uDtA = { value: tex.a };
+    sh.uniforms.uDtM = { value: tex.m };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBP;\nvarying vec3 vBN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBP = position;\nvBN = normal;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vBP;
+varying vec3 vBN;
+uniform sampler2D uDtA, uDtM;
+float dtH = 0.0;
+vec3 dtPerturb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float fd) {
+  vec3 sx = normalize(dFdx(surf_pos)), sy = normalize(dFdy(surf_pos));
+  vec3 r1 = cross(sy, surf_norm), r2 = cross(surf_norm, sx);
+  float det = dot(sx, r1) * fd;
+  vec3 g = sign(det) * (dHdxy.x * r1 + dHdxy.y * r2);
+  return normalize(abs(det) * surf_norm - g);
+}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+{
+  vec3 n = normalize(vBN);
+  vec3 w = pow(abs(n), vec3(4.0)); w /= (w.x + w.y + w.z);
+  vec3 p = vBP / ${D.size.toFixed(3)};
+  vec3 a = texture2D(uDtA, p.zy).rgb * w.x + texture2D(uDtA, p.xz).rgb * w.y + texture2D(uDtA, p.xy).rgb * w.z;
+  vec3 m = texture2D(uDtM, p.zy).rgb * w.x + texture2D(uDtM, p.xz).rgb * w.y + texture2D(uDtM, p.xy).rgb * w.z;
+  diffuseColor.rgb *= mix(vec3(1.0), a * 2.0, ${D.alb.toFixed(2)});
+  diffuseColor.rgb *= mix(1.0, m.r, 0.5);
+  dtH = m.b;
+}`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+{
+  float fade = smoothstep(14.0, 2.5, length(vViewPosition));
+  vec2 dH = vec2(dFdx(dtH), dFdy(dtH)) * ${(D.bump * 0.02).toFixed(4)} * fade;
+  normal = dtPerturb(-vViewPosition, normal, dH, faceDirection);
+}`);
+  };
+  const key = (mat.customProgramCacheKey ? mat.customProgramCacheKey() : '') + '-dt-' + kind;
+  mat.customProgramCacheKey = () => key;
+  mat.needsUpdate = true;
+}
+
+function detailKind(n) {
+  if (/_(hair|beard)$|Hair|Beard/i.test(n)) return 'hair';
+  if (/_skin$|^Skin/i.test(n)) return 'skin';
+  if (/_(boot|belt|glove)$|Leather|Strap|Boot|Belt|Glove/i.test(n)) return 'leather';
+  if (/_metal$|Blade|Silver|Armor|Helmet|Iron|Steel/i.test(n)) return 'metal';
+  if (/_(top|pants|robe|dress|Cape|Robe|Dress|apron|vest|Lining|hat|Band|hatband|sash|ribbon)$|Cape|Frill|Velvet|Cloth/i.test(n)) return 'cloth';
+  return null;
+}
+
+/**
  * characters.glb の人型・モンスターを複製して使うためのライブラリ
  * - 人型は全員同じ骨格なので Hero のアニメーションを共有する
  * - 布にはシーン（布の光沢）、髪には異方性っぽいハイライトを付けて質感を上げる
@@ -67,6 +149,8 @@ export class ModelLibrary {
       r = p;
     }
     if (/Blade|Silver|Armor|Gold|Sapphire|Ruby/i.test(n)) r.envMapIntensity = 1.6;
+    const dk = detailKind(n);
+    if (dk && !/^Mon_/.test(n)) addDetail(r, dk);
     if (/Eye|Iris|Pupil/i.test(n)) { r.roughness = 0.08; r.envMapIntensity = 1.4; }
     this._upgraded.set(m, r);
     return r;

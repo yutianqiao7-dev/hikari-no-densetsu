@@ -16,7 +16,7 @@ import { Story } from './game/story.js';
 import { Flight } from './game/flight.js';
 import { fieldMenu, inn, shop } from './game/menu.js';
 import { ISLANDS } from './world/world.js';
-import { CUT } from './world/surfaces.js';
+import { CUT, setTextureQuality } from './world/surfaces.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -37,6 +37,7 @@ class Game {
   constructor() {
     this.qKey = loadQualityKey();
     this.q = QUALITY[this.qKey] || QUALITY.ultra;
+    setTextureQuality(this.qKey === 'low');
     this.canvas = document.getElementById('c');
     this.uiRoot = document.getElementById('ui');
     this.renderer = new Renderer(this.canvas, this.q);

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { NO_AO } from '../core/renderer.js';
 import { NOISE } from './glsl.js';
 
 /**
@@ -103,6 +104,7 @@ function makeField({ count, radius, blade, hf, heightTex, colorTex, shared, flow
   mesh.frustumCulled = false;
   mesh.receiveShadow = true;
   mesh.userData.uni = uni;
+  NO_AO.add(mesh);
   return mesh;
 }
 

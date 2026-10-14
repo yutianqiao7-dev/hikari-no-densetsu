@@ -84,6 +84,16 @@ class MB:
 
     def add(self, kind, m, loc=(0, 0, 0), rot=(0, 0, 0), scale=(1, 1, 1), smooth=None, jitter=0.0, **kw):
         tmp = bmesh.new()
+        if kind == 'cube' and kw.get('bevel'):
+            # 角を面取りした箱：先に寸法を確定してから一定幅で面取りする
+            bmesh.ops.create_cube(tmp, size=1.0)
+            bmesh.ops.scale(tmp, vec=Vector(scale), verts=tmp.verts)
+            bw = min(kw['bevel'], min(scale) * 0.45)
+            bmesh.ops.bevel(tmp, geom=list(tmp.edges), offset=bw, segments=kw.get('bseg', 1), profile=0.5, affect='EDGES')
+            tmp.normal_update()
+            M = Matrix.LocRotScale(Vector(loc), Euler(rot), Vector((1, 1, 1)))
+            self._merge(tmp, m, False if smooth is None else smooth, M, jitter, kw.get('seed', 0))
+            return
         if kind == 'cube':
             bmesh.ops.create_cube(tmp, size=1.0)
             sm = False

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { NO_AO } from '../core/renderer.js';
 import { NOISE } from './glsl.js';
 
 /** 海と湖。地形の高さテクスチャから水深を求め、浅瀬の色・波打ち際の泡・空の反射・太陽のきらめきを描く */
@@ -116,6 +117,7 @@ export function createWater(hf, heightTex, sky) {
   geo.rotateX(-Math.PI / 2);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'Ocean';
+  NO_AO.add(mesh);
   mesh.renderOrder = 2;
   mesh.frustumCulled = false;
 

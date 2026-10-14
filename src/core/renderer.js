@@ -5,9 +5,13 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+
+/** 環境遮蔽（AO）の計算に含めないもの（草・葉のカード・海など、形がシェーダーで決まるもの） */
+export const NO_AO = new Set();
 
 export const QUALITY = {
-  ultra: { label: '最高', pixelRatio: 2, shadow: 4096, shadowRange: 70, msaa: 4, bloom: true, grass: 90000, grassRadius: 56, flowers: 6000, lodNear: 150, far: 1100 },
+  ultra: { label: '最高', pixelRatio: 2, shadow: 4096, shadowRange: 70, msaa: 4, bloom: true, ao: true, grass: 90000, grassRadius: 56, flowers: 6000, lodNear: 150, far: 1100 },
   high: { label: '高', pixelRatio: 1.5, shadow: 2048, shadowRange: 55, msaa: 4, bloom: true, grass: 45000, grassRadius: 42, flowers: 3000, lodNear: 110, far: 850 },
   low: { label: '軽量', pixelRatio: 1, shadow: 1024, shadowRange: 40, msaa: 0, bloom: false, grass: 14000, grassRadius: 28, flowers: 1000, lodNear: 70, far: 600 },
 };
@@ -27,7 +31,7 @@ const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
     uTime: { value: 0 },
-    uSaturation: { value: 1.12 },
+    uSaturation: { value: 1.03 },
     uContrast: { value: 1.04 },
     uTint: { value: new THREE.Vector3(1, 1, 1) },
     uVignette: { value: 0.32 },
@@ -107,7 +111,32 @@ export class Renderer {
     if (this.onResize) this.onResize(w, h);
   }
 
+  /** 物の接するところ・すみの陰（GTAO）。最高画質のみ */
+  setupAO(scene, camera) {
+    const size = this.r.getDrawingBufferSize(new THREE.Vector2());
+    const p = new GTAOPass(scene, camera, size.x, size.y);
+    p.output = GTAOPass.OUTPUT.Default;
+    p.blendIntensity = 0.85;
+    p.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.6, thickness: 1.2, scale: 1.0, samples: 16, distanceFallOff: 1.0 });
+    p.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+    const hidden = [];
+    const ov = p._overrideVisibility.bind(p), rv = p._restoreVisibility.bind(p);
+    p._overrideVisibility = () => {
+      ov();
+      for (const o of NO_AO) if (o.visible) { o.visible = false; hidden.push(o); }
+    };
+    p._restoreVisibility = () => {
+      for (const o of hidden) o.visible = true;
+      hidden.length = 0;
+      rv();
+    };
+    this.composer.insertPass(p, 1);
+    this.gtao = p;
+  }
+
   render(scene, camera, t) {
+    if (this.q.ao && !this.gtao) this.setupAO(scene, camera);
+    if (this.gtao) { this.gtao.scene = scene; this.gtao.camera = camera; }
     this.renderPass.scene = scene;
     this.renderPass.camera = camera;
     this.grade.uniforms.uTime.value = t;

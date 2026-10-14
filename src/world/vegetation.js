@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { NO_AO } from '../core/renderer.js';
 import { leafTexture } from './leaves.js';
 
 /** プロトタイプ（Group / Mesh）からメッシュ部品のリストを取り出す */
@@ -97,6 +98,8 @@ export class Vegetation {
         im.castShadow = shadow;
         im.receiveShadow = true;
         this.group.add(im);
+        const pm = im.material;
+        if (pm.alphaTest > 0 || pm.transparent || /Leaf/.test(p.material.name || '')) NO_AO.add(im);
         return im;
       });
       this.kinds.push({ kind, mats, tints, pos, hi: mk(hi, true), lo: mk(lo, kind !== 'Bush') });

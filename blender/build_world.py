@@ -305,20 +305,20 @@ print("terrain mesh...")
 make_terrain()
 
 # ---------------------------------------------------------------- 素材
-M_STONE = mat("Stone", (0.80, 0.77, 0.70), 0.85)
+M_STONE = mat("Stone", (0.66, 0.62, 0.55), 0.85)
 M_STONE_D = mat("StoneDark", (0.52, 0.50, 0.48), 0.9)
-M_ROOF_B = mat("RoofBlue", (0.16, 0.30, 0.72), 0.55)
-M_ROOF_R = mat("RoofRed", (0.70, 0.22, 0.16), 0.6)
-M_ROOF_O = mat("RoofOrange", (0.80, 0.42, 0.18), 0.6)
-M_ROOF_G = mat("RoofGreen", (0.25, 0.48, 0.30), 0.6)
+M_ROOF_B = mat("RoofBlue", (0.2, 0.26, 0.4), 0.55)
+M_ROOF_R = mat("RoofRed", (0.58, 0.24, 0.16), 0.6)
+M_ROOF_O = mat("RoofOrange", (0.70, 0.40, 0.22), 0.6)
+M_ROOF_G = mat("RoofGreen", (0.30, 0.40, 0.30), 0.6)
 M_WOOD = mat("Wood", (0.42, 0.27, 0.14), 0.8)
 M_WOOD_D = mat("WoodDark", (0.25, 0.15, 0.08), 0.8)
-M_PLASTER = mat("Plaster", (0.93, 0.89, 0.80), 0.9)
+M_PLASTER = mat("Plaster", (0.86, 0.82, 0.72), 0.9)
 M_DOOR = mat("Door", (0.08, 0.06, 0.05), 0.9)
 M_GOLD = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
 M_RED = mat("BannerRed", (0.75, 0.10, 0.10), 0.7, double=True)
 M_CARPET = mat("Carpet", (0.62, 0.08, 0.10), 0.9)
-M_WINDOW = mat("WindowLight", (1.0, 0.82, 0.45), 0.5, emit=(1.0, 0.75, 0.35), emit_strength=2.0)
+M_WINDOW = mat("WindowLight", (0.05, 0.06, 0.07), 0.12, emit=(1.0, 0.72, 0.38), emit_strength=2.0)
 M_WINDOW_D = mat("WindowDark", (0.10, 0.12, 0.18), 0.3)
 M_TOWER = mat("TowerStone", (0.30, 0.27, 0.34), 0.9)
 M_TOWER_ROOF = mat("TowerRoof", (0.28, 0.08, 0.36), 0.5)
@@ -392,79 +392,188 @@ def marker(name, x, z, rot=0.0, y=None):
 
 # ---------------------------------------------------------------- 城
 def build_castle():
+    import arch
+    importlib.reload(arch)
     cx, cz = CASTLE
     y = H(cx, cz)
     mb = MB()
     W, D, WH, T = 64, 56, 9, 2.6
+    M_SLIT = mat("Abyss", (0.0, 0.0, 0.0), 1.0)
+    M_TRIM = M_STONE_D
 
-    def box(x, z, w, d, h, m, y0=0.0):
-        mb.add('cube', m, loc=B(x, z, y0 + h / 2), scale=(w, d, h))
+    def box(x, z, w, d, h, m, y0=0.0, bevel=0.0):
+        if bevel:
+            mb.add('cube', m, loc=B(x, z, y0 + h / 2), scale=(w, d, h), bevel=bevel)
+        else:
+            mb.add('cube', m, loc=B(x, z, y0 + h / 2), scale=(w, d, h))
+
+    def wall(ax, a0, a1, c, outer):
+        """城壁 1 本。ax='x' なら x が a0→a1、z = c。outer は外側の向き（+1/-1）"""
+        L = a1 - a0
+        mid = (a0 + a1) / 2
+
+        def at(a, o):
+            return (a, c + o * outer) if ax == 'x' else (c + o * outer, a)
+
+        def sz(l, t):
+            return (l, t) if ax == 'x' else (t, l)
+        x, z = at(mid, 0)
+        w_, d_ = sz(L, T)
+        box(x, z, w_, d_, WH, M_STONE, bevel=0.08)
+        # すそ広がりの土台
+        x, z = at(mid, 0.35)
+        w_, d_ = sz(L, T + 0.9)
+        box(x, z, w_, d_, 1.6, M_TRIM, -0.6, bevel=0.15)
+        # 張り出した胸壁と、その下の持ち送り（外側）
+        x, z = at(mid, T / 2 + 0.25)
+        w_, d_ = sz(L, 0.5)
+        box(x, z, w_, d_, 1.0, M_STONE, WH - 0.2, bevel=0.05)
+        n = int(L / 1.0)
+        for k in range(n):
+            a = a0 + (k + 0.5) * L / n
+            x, z = at(a, T / 2 + 0.22)
+            w_, d_ = sz(0.32, 0.44)
+            box(x, z, w_, d_, 0.6, M_TRIM, WH - 0.75, bevel=0.04)
+        # 内側の通路の手すり壁
+        x, z = at(mid, -T / 2 + 0.2)
+        w_, d_ = sz(L, 0.4)
+        box(x, z, w_, d_, 0.9, M_STONE, WH, bevel=0.04)
+        # 狭間（凸凹）
+        n = int(L / 2.0)
+        for k in range(0, n, 2):
+            a = a0 + (k + 0.5) * L / n
+            x, z = at(a, T / 2 + 0.25)
+            w_, d_ = sz(L / n, 0.55)
+            box(x, z, w_ * 0.98, d_, 1.2, M_STONE, WH + 0.8, bevel=0.06)
+            box(x, z, w_ * 1.04, d_ + 0.1, 0.16, M_TRIM, WH + 2.0, bevel=0.03)
+        # 矢狭間
+        m = max(1, int(L / 6.0))
+        for k in range(m):
+            a = a0 + (k + 0.5) * L / m
+            x, z = at(a, T / 2 + 0.02)
+            w_, d_ = sz(0.22, 0.06)
+            box(x, z, w_, d_, 1.5, M_SLIT, WH * 0.45)
+            w_, d_ = sz(0.6, 0.1)
+            box(x, z, w_, d_, 0.2, M_TRIM, WH * 0.45 - 0.2, bevel=0.03)
+
+    def tower(x, z, r, hgt, roof_h, flag=False, seg=32):
+        bx, by = x, -z
+        mb.add('cyl', M_TRIM, loc=(bx, by, 0.4), r1=r * 1.16, r2=r * 1.02, depth=2.2, seg=seg)
+        mb.add('cyl', M_STONE, loc=(bx, by, hgt / 2), r1=r, r2=r * 0.95, depth=hgt, seg=seg)
+        for f in (0.36, 0.7):
+            mb.add('cyl', M_TRIM, loc=(bx, by, hgt * f), r1=r * 0.99 + 0.1, r2=r * 0.98 + 0.1, depth=0.22, seg=seg)
+        # 持ち送りと張り出した胸壁
+        nc = int(r * 6)
+        for k in range(nc):
+            a = k / nc * math.tau
+            mb.add('cube', M_TRIM, loc=(bx + math.cos(a) * (r * 0.95 + 0.18), by + math.sin(a) * (r * 0.95 + 0.18), hgt - 0.35),
+                   rot=(0, 0, a), scale=(0.42, 0.3, 0.7), bevel=0.04)
+        mb.add('cyl', M_STONE, loc=(bx, by, hgt + 0.45), r1=r * 0.95 + 0.42, r2=r * 0.95 + 0.42, depth=1.1, seg=seg)
+        mb.add('cyl', M_TRIM, loc=(bx, by, hgt + 1.05), r1=r * 0.95 + 0.5, r2=r * 0.95 + 0.5, depth=0.18, seg=seg)
+        # 屋根：軒先が反った二段の円すい
+        R0 = r * 0.95 + 0.75
+        mb.add('cyl', M_ROOF_B, loc=(bx, by, hgt + 1.45), r1=R0, r2=r * 0.95 + 0.2, depth=0.7, seg=seg, smooth=True)
+        mb.add('cyl', M_ROOF_B, loc=(bx, by, hgt + 1.8 + roof_h / 2), r1=r * 0.95 + 0.25, r2=0.0, depth=roof_h, seg=seg, smooth=True)
+        top = hgt + 1.8 + roof_h
+        mb.add('sphere', M_GOLD, loc=(bx, by, top + 0.15), r=0.22, seg=12, rings=8)
+        mb.add('cyl', M_GOLD, loc=(bx, by, top + 0.9), r1=0.06, r2=0.02, depth=1.4, seg=6)
+        if flag:
+            mb.add('cube', M_RED, loc=(bx + 0.9, by, top + 1.25), scale=(1.7, 0.04, 0.9))
+        # 窓（石の枠つきの縦長のアーチ窓）
+        for k in range(4):
+            a = k * math.pi / 2 + math.pi / 4
+            for f in (0.52, 0.83):
+                px, py = bx + math.cos(a) * (r * 0.97), by + math.sin(a) * (r * 0.97)
+                mb.add('cube', M_TRIM, loc=(px, py, hgt * f), rot=(0, 0, a), scale=(0.3, 1.2, 1.9), bevel=0.06)
+                ox, oy = math.cos(a) * 0.12, math.sin(a) * 0.12
+                mb.add('cube', M_SLIT, loc=(px + ox, py + oy, hgt * f - 0.08), rot=(0, 0, a), scale=(0.1, 0.62, 1.4))
+                mb.add('cyl', M_SLIT, loc=(px + ox, py + oy, hgt * f + 0.62), rot=(0, math.pi / 2, a), r1=0.31, r2=0.31, depth=0.1, seg=12)
 
     # 城壁
-    box(0, -D / 2, W, T, WH, M_STONE)
-    box(-W / 2, 0, T, D, WH, M_STONE)
-    box(W / 2, 0, T, D, WH, M_STONE)
-    box(-(W / 4 + 2), D / 2, W / 2 - 4, T, WH, M_STONE)
-    box((W / 4 + 2), D / 2, W / 2 - 4, T, WH, M_STONE)
-    box(0, D / 2, 8, T, 3.2, M_STONE, WH - 3.2)   # 門の上
-    # 狭間（銃眼）
-    for sx in range(-15, 16):
-        for zz in (-D / 2, D / 2):
-            if sx % 2 == 0:
-                box(sx * 2.0, zz, 1.2, T + 0.3, 1.2, M_STONE, WH)
-    for sz in range(-13, 14):
-        for xx in (-W / 2, W / 2):
-            if sz % 2 == 0:
-                box(xx, sz * 2.0, T + 0.3, 1.2, 1.2, M_STONE, WH)
-    # 角の塔
+    wall('x', -W / 2, W / 2, -D / 2, -1)
+    wall('z', -D / 2, D / 2, -W / 2, -1)
+    wall('z', -D / 2, D / 2, W / 2, 1)
+    wall('x', -W / 2, -6.0, D / 2, 1)
+    wall('x', 6.0, W / 2, D / 2, 1)
+    # 門：アーチの上の壁・迫石・落とし格子
+    # 門の上：アーチ形にくりぬいた壁（起点 5.6m・半径 2.6m）
+    arch.arch_wall(mb, M_STONE, 0, -D / 2, 9.0, WH - 3.4, WH, 2.6, T)
+    for k in range(13):
+        a = math.pi * k / 12
+        mb.add('cube', M_TRIM, loc=B(math.cos(a) * 2.85, D / 2 + T / 2 + 0.06, WH - 3.4 + math.sin(a) * 2.85), rot=(0, -a, 0), scale=(0.62, 0.25, 0.5), bevel=0.04)
+    for sx in (-1, 1):
+        for k in range(10):
+            box(sx * 2.85, D / 2 + T / 2 + 0.06, 0.55, 0.25, 0.55, M_TRIM, k * 0.56, bevel=0.04)
+    for k in range(9):
+        box(-2.4 + k * 0.6, D / 2 + T / 2 - 0.3, 0.09, 0.09, 2.0, M_IRON, WH - 3.4 + 0.6)
+    for k in range(3):
+        box(0, D / 2 + T / 2 - 0.3, 5.0, 0.09, 0.09, M_IRON, WH - 3.4 + 0.9 + k * 0.6)
+    # 角の塔・門の塔
     for sx in (-1, 1):
         for sz in (-1, 1):
-            x, z = sx * W / 2, sz * D / 2
-            mb.add('cyl', M_STONE, loc=B(x, z, 7.5), r1=4.6, r2=4.2, depth=15, seg=20)
-            mb.add('cyl', M_STONE_D, loc=B(x, z, 15.3), r1=4.9, r2=4.9, depth=0.8, seg=20)
-            mb.add('cyl', M_ROOF_B, loc=B(x, z, 19.2), r1=5.6, r2=0.0, depth=7.5, seg=20, smooth=True)
-            mb.add('cyl', M_GOLD, loc=B(x, z, 23.4), r1=0.12, r2=0.05, depth=1.4, seg=6)
-            for k in range(4):
-                a = k * math.pi / 2 + math.pi / 4
-                box(x + math.cos(a) * 4.5, z + math.sin(a) * 4.5, 0.6, 0.6, 1.2, M_WINDOW_D, 10)
-    # 門の塔
+            tower(sx * W / 2, sz * D / 2, 4.6, 15, 7.0, flag=(sz < 0))
     for sx in (-1, 1):
-        x, z = sx * 6.2, D / 2 + 0.5
-        mb.add('cyl', M_STONE, loc=B(x, z, 6.5), r1=3.0, r2=2.8, depth=13, seg=16)
-        mb.add('cyl', M_ROOF_B, loc=B(x, z, 15.8), r1=3.7, r2=0.0, depth=5.6, seg=16, smooth=True)
-    # 中庭の石畳と赤じゅうたん
+        tower(sx * 6.2, D / 2 + 0.5, 3.0, 13, 5.2, seg=28)
+    # 中庭の石畳と赤じゅうたん（金のふち）
     box(0, 0, W - 3, D - 3, 0.08, M_FLOOR, -0.02)
     box(0, 11, 3.2, 34, 0.12, M_CARPET, 0.04)
-    # 天守
-    box(0, -16, 28, 18, 14, M_STONE)
-    gable_roof(mb, 28, 18, 6, 14, M_ROOF_B)
-    box(0, -6.9, 4.4, 0.4, 6.5, M_DOOR)
-    mb.add('cyl', M_DOOR, loc=B(0, -6.9, 6.5), rot=(math.pi / 2, 0, 0), r1=2.2, r2=2.2, depth=0.4, seg=16)
-    for wx in (-10, -6, 6, 10):
-        for wy in (4.5, 9.5):
-            box(wx, -6.9, 1.4, 0.3, 2.4, M_WINDOW, wy)
-    for wx in (-3.2, 3.2):
-        mb.add('cube', M_RED, loc=B(wx, -6.75, 9.0), scale=(2.0, 0.08, 5.0))
-        box(wx, -6.6, 0.5, 0.2, 0.5, M_GOLD, 9.6)
     for sx in (-1, 1):
-        x, z = sx * 14, -7.5
-        mb.add('cyl', M_STONE, loc=B(x, z, 10), r1=3.4, r2=3.1, depth=20, seg=20)
-        mb.add('cyl', M_STONE_D, loc=B(x, z, 20.3), r1=3.7, r2=3.7, depth=0.6, seg=20)
-        mb.add('cyl', M_ROOF_B, loc=B(x, z, 25.0), r1=4.2, r2=0.0, depth=9, seg=20, smooth=True)
-    mb.add('cyl', M_STONE, loc=B(0, -20, 15), r1=5.6, r2=5.0, depth=30, seg=24)
-    mb.add('cyl', M_STONE_D, loc=B(0, -20, 30.3), r1=5.9, r2=5.9, depth=0.8, seg=24)
-    mb.add('cyl', M_ROOF_B, loc=B(0, -20, 36.5), r1=6.6, r2=0.0, depth=12, seg=24, smooth=True)
-    mb.add('cyl', M_GOLD, loc=B(0, -20, 43.5), r1=0.16, r2=0.05, depth=2.4, seg=6)
-    mb.add('cube', M_RED, loc=B(1.6, -20, 43.6), scale=(3.0, 0.06, 1.6))
-    for k in range(6):
-        a = k * math.pi / 3
-        box(math.cos(a) * 5.4, -20 + math.sin(a) * 5.4, 0.9, 0.9, 1.8, M_WINDOW, 22)
-    # 中庭の植え込み・噴水
-    mb.add('cyl', M_STONE_D, loc=B(-16, 10, 0.4), r1=3.5, r2=3.5, depth=0.8, seg=24)
-    mb.add('cyl', M_WATER_WELL, loc=B(-16, 10, 0.75), r1=3.1, r2=3.1, depth=0.1, seg=24)
-    mb.add('cyl', M_STONE, loc=B(-16, 10, 1.4), r1=0.5, r2=0.4, depth=2.0, seg=12)
-    mb.add('cyl', M_STONE_D, loc=B(16, 10, 0.4), r1=3.5, r2=3.5, depth=0.8, seg=24)
-    mb.add('ico', mat("Hedge", (0.20, 0.45, 0.16), 0.9), loc=B(16, 10, 1.6), r=2.4, sub=2, scale=(1, 1, 0.7), jitter=0.25)
+        box(sx * 1.7, 11, 0.14, 34, 0.13, M_GOLD, 0.04)
+    # 天守（本館）
+    KZ, KW, KD, KH = -16, 28, 18, 14
+    box(0, KZ, KW, KD, KH, M_STONE, bevel=0.1)
+    box(0, KZ, KW + 0.8, KD + 0.8, 1.4, M_TRIM, -0.4, bevel=0.12)
+    for hh in (KH * 0.48, KH - 0.3):
+        box(0, KZ, KW + 0.3, KD + 0.3, 0.3, M_TRIM, hh, bevel=0.05)
+    fz = KZ + KD / 2      # 正面の壁
+    for bxp in (-13.4, -8.2, 8.2, 13.4):
+        box(bxp, fz + 0.5, 1.1, 1.0, KH - 1.5, M_STONE, 0, bevel=0.06)
+        mb.add('cube', M_STONE, loc=B(bxp, fz + 0.65, KH - 1.2), rot=(math.radians(-35), 0, 0), scale=(1.1, 0.9, 1.4), bevel=0.05)
+    for wx in (-10.8, -5.6, 5.6, 10.8):
+        for wy in (2.6, 8.2):
+            box(wx, fz + 0.12, 2.0, 0.3, 3.2, M_TRIM, wy - 0.3, bevel=0.06)
+            mb.add('cyl', M_TRIM, loc=B(wx, fz + 0.12, wy + 2.9), rot=(math.pi / 2, 0, 0), r1=1.0, r2=1.0, depth=0.3, seg=20)
+            box(wx, fz + 0.28, 1.4, 0.06, 2.6, M_WINDOW, wy)
+            mb.add('cyl', M_WINDOW, loc=B(wx, fz + 0.28, wy + 2.6), rot=(math.pi / 2, 0, 0), r1=0.7, r2=0.7, depth=0.06, seg=20)
+            box(wx, fz + 0.33, 0.07, 0.06, 3.3, M_IRON, wy)
+            box(wx, fz + 0.33, 1.4, 0.06, 0.07, M_IRON, wy + 1.5)
+            box(wx, fz + 0.45, 2.3, 0.6, 0.18, M_TRIM, wy - 0.42, bevel=0.04)
+    # 正面の大扉（アーチ）
+    box(0, fz + 0.2, 5.6, 0.4, 5.0, M_TRIM, 0, bevel=0.06)
+    mb.add('cyl', M_TRIM, loc=B(0, fz + 0.2, 5.0), rot=(math.pi / 2, 0, 0), r1=2.8, r2=2.8, depth=0.4, seg=24)
+    box(0, fz + 0.42, 4.4, 0.2, 5.0, M_DOOR, 0)
+    mb.add('cyl', M_DOOR, loc=B(0, fz + 0.42, 5.0), rot=(math.pi / 2, 0, 0), r1=2.2, r2=2.2, depth=0.2, seg=24)
+    for k in range(5):
+        box(-1.8 + k * 0.9, fz + 0.55, 0.06, 0.06, 6.6, M_WOOD_D, 0)
+    for hy in (1.2, 3.8):
+        box(0, fz + 0.58, 4.2, 0.06, 0.16, M_IRON, hy)
+    for k in range(15):
+        a = math.pi * k / 14
+        box(math.cos(a) * 2.75, fz + 0.45, 0.6, 0.2, 0.6, M_STONE, 5.0 + math.sin(a) * 2.75 - 0.3, bevel=0.04)
+    for wx in (-3.2, 3.2):
+        mb.add('cube', M_RED, loc=B(wx, fz + 0.35, 9.0), scale=(2.0, 0.08, 5.0))
+        mb.add('cube', M_GOLD, loc=B(wx, fz + 0.4, 11.45), scale=(2.1, 0.1, 0.12))
+        box(wx, fz + 0.45, 0.5, 0.1, 0.5, M_GOLD, 9.6)
+    km = type('KM', (), {})()
+    km.roof, km.timber = M_ROOF_B, M_TRIM
+    arch.gable_roof(arch.Offset(mb, B(0, KZ, 0)), km, KW, KD, 6.0, KH, over_x=0.5, over_y=0.6, t=0.3)
+    for sx in (-1, 1):
+        tower(sx * 14, -7.5, 3.4, 20, 8.0, seg=28)
+    tower(0, -20, 5.6, 30, 10.5, flag=True, seg=36)
+    # 中庭の噴水（二段の水盤）と植え込み
+    fx, fz2 = -16, 10
+    mb.add('cyl', M_TRIM, loc=B(fx, fz2, 0.35), r1=3.6, r2=3.5, depth=0.7, seg=40)
+    mb.add('cyl', M_STONE, loc=B(fx, fz2, 0.78), r1=3.65, r2=3.65, depth=0.16, seg=40)
+    mb.add('cyl', M_WATER_WELL, loc=B(fx, fz2, 0.75), r1=3.2, r2=3.2, depth=0.1, seg=40)
+    mb.add('cyl', M_STONE, loc=B(fx, fz2, 1.4), r1=0.45, r2=0.35, depth=1.6, seg=16)
+    mb.add('cyl', M_STONE, loc=B(fx, fz2, 2.2), r1=1.3, r2=1.0, depth=0.35, seg=28)
+    mb.add('cyl', M_WATER_WELL, loc=B(fx, fz2, 2.36), r1=1.15, r2=1.15, depth=0.06, seg=28)
+    mb.add('cyl', M_STONE, loc=B(fx, fz2, 2.8), r1=0.16, r2=0.12, depth=0.9, seg=12)
+    mb.add('sphere', M_GOLD, loc=B(fx, fz2, 3.3), r=0.2, seg=12, rings=8)
+    mb.add('cyl', M_TRIM, loc=B(16, 10, 0.4), r1=3.5, r2=3.5, depth=0.8, seg=40)
+    mb.add('cyl', M_STONE, loc=B(16, 10, 0.84), r1=3.6, r2=3.6, depth=0.14, seg=40)
+    mb.add('ico', M_HEDGE, loc=B(16, 10, 1.6), r=2.4, sub=3, scale=(1, 1, 0.7), jitter=0.2)
+    mb.add('ico', M_HEDGE, loc=B(16, 10, 2.9), r=1.2, sub=3, scale=(1, 1, 1.1), jitter=0.12)
     mb.build("Castle", C_BLDG, loc=B(cx, cz, y))
 
     # 当たり判定
@@ -495,59 +604,35 @@ def build_castle():
 
 # ---------------------------------------------------------------- 村
 def build_house(name, x, z, rot, w, d, wh, roof_m, inn=False, shop=False):
+    """作り込んだ木組みの 2 階建て（blender/arch.py）"""
+    import arch
+    importlib.reload(arch)
     y = H(x, z)
-    mb = MB()
-    mb.add('cube', M_STONE_D, loc=(0, 0, 0.3), scale=(w + 0.4, d + 0.4, 0.8))
-    mb.add('cube', M_PLASTER, loc=(0, 0, 0.7 + wh / 2), scale=(w, d, wh))
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            mb.add('cube', M_WOOD_D, loc=(sx * w / 2, sy * d / 2, 0.7 + wh / 2), scale=(0.35, 0.35, wh))
-    for sy in (-1, 1):
-        mb.add('cube', M_WOOD_D, loc=(0, sy * d / 2, 0.7 + wh), scale=(w, 0.36, 0.3))
-        mb.add('cube', M_WOOD_D, loc=(0, sy * d / 2, 0.9), scale=(w, 0.36, 0.25))
-    gable_roof(mb, w, d, 2.6 + d * 0.12, 0.7 + wh, roof_m)
-    # 扉（正面 = Blender -Y = ゲーム +Z）
-    mb.add('cube', M_WOOD, loc=(0, -d / 2 - 0.05, 0.7 + 1.1), scale=(1.4, 0.15, 2.2))
-    mb.add('cube', M_GOLD, loc=(0.45, -d / 2 - 0.15, 0.7 + 1.1), scale=(0.12, 0.08, 0.12))
-    for wx in (-w / 2 + 1.2, w / 2 - 1.2):
-        if abs(wx) > 1.5:
-            mb.add('cube', M_WINDOW, loc=(wx, -d / 2 - 0.05, 0.7 + wh * 0.6), scale=(0.9, 0.12, 1.0))
-            mb.add('cube', M_WOOD_D, loc=(wx, -d / 2 - 0.12, 0.7 + wh * 0.6 - 0.6), scale=(1.2, 0.3, 0.12))
-    for sx in (-1, 1):
-        mb.add('cube', M_WINDOW, loc=(sx * (w / 2 + 0.05), 0, 0.7 + wh * 0.6), scale=(0.12, 1.0, 1.0))
-    mb.add('cube', M_STONE_D, loc=(w * 0.25, d * 0.2, 0.7 + wh + 2.5), scale=(0.8, 0.8, 2.6))
+    shutters = [mat("ShutterGreen", (0.22, 0.36, 0.26), 0.7), mat("ShutterBlue", (0.2, 0.3, 0.44), 0.7),
+                mat("ShutterRed", (0.48, 0.18, 0.14), 0.7), mat("ShutterBrown", (0.38, 0.25, 0.15), 0.7)]
+    seed = sum(ord(c) for c in name)
+    sign = None
     if inn or shop:
-        mb.add('cyl', M_WOOD_D, loc=(1.6, -d / 2 - 0.8, 0.7 + wh - 0.2), rot=(0, math.pi / 2, 0), r1=0.06, r2=0.06, depth=1.2, seg=6)
         sign = mat("SignInn", (0.85, 0.65, 0.25), 0.5) if inn else mat("SignShop", (0.30, 0.55, 0.85), 0.5)
-        mb.add('cube', sign, loc=(2.0, -d / 2 - 0.8, 0.7 + wh - 0.9), scale=(1.2, 0.12, 0.8))
-        # 看板マーク
-        if inn:
-            mb.add('cube', M_PLASTER, loc=(2.0, -d / 2 - 0.88, 0.7 + wh - 0.95), scale=(0.7, 0.05, 0.25))
-            mb.add('sphere', M_RED, loc=(1.75, -d / 2 - 0.9, 0.7 + wh - 0.78), r=0.12, seg=10, rings=6)
-        else:
-            mb.add('cube', M_GOLD, loc=(2.0, -d / 2 - 0.88, 0.7 + wh - 0.9), rot=(0, math.pi / 4, 0), scale=(0.35, 0.05, 0.35))
-    for wx in (-w / 2 + 1.2, w / 2 - 1.2):
-        if abs(wx) > 1.5:
-            mb.add('cube', M_WOOD, loc=(wx, -d / 2 - 0.3, 0.7 + wh * 0.6 - 0.75), scale=(1.1, 0.35, 0.25))
-            mb.add('ico', M_HEDGE, loc=(wx, -d / 2 - 0.3, 0.7 + wh * 0.6 - 0.6), r=0.5, sub=1, scale=(1.0, 0.32, 0.22))
-            for k in range(5):
-                mb.add('ico', M_FLOWER[(k + int(abs(wx))) % 3], loc=(wx - 0.4 + k * 0.2, -d / 2 - 0.36, 0.7 + wh * 0.6 - 0.5), r=0.08, sub=1)
+    mb, info = arch.build_house_mesh(w, d, wh, roof_m, shutters[seed % 4], inn=inn, shop=shop, seed=seed, sign_m=sign, flowers=M_FLOWER)
     mb.build(name, C_BLDG, loc=B(x, z, y), rot_z=rot)
-    collider(name, x, z, w + 0.8, d + 0.8, rot, top=wh + 3)
+    d = info['depth']
+    collider(name, x, z, w + 0.8, d + 0.6, rot, top=wh + 5)
     # 扉（入ると室内へ）：扉の前と、出てきたときの立ち位置
     def lg(lx, ly):
         bx = x + lx * math.cos(rot) - ly * math.sin(rot)
         by = -z + lx * math.sin(rot) + ly * math.cos(rot)
         return bx, -by
-    dx_, dz_ = lg(0, -(d / 2 + 0.75))
+    d1 = d - 0.9   # 1 階の壁の奥行き（2 階は前後に 0.45 張り出す）
+    dx_, dz_ = lg(0, -(d1 / 2 + 1.3))
     marker("Door_" + name, dx_, dz_, rot=rot)
-    ex_, ez_ = lg(0, -(d / 2 + 3.2))
+    ex_, ez_ = lg(0, -(d1 / 2 + 3.4))
     marker("DoorExit_" + name, ex_, ez_, rot=rot)
     # 煙突の先（ゲーム側で煙を出す）
-    lx, ly = w * 0.25, d * 0.2
+    lx, ly, lz = info['chimney']
     cbx = x + lx * math.cos(rot) - ly * math.sin(rot)
     cby = -z + lx * math.sin(rot) + ly * math.cos(rot)
-    marker("Smoke_" + name, cbx, -cby, y=y + 0.7 + wh + 3.9)
+    marker("Smoke_" + name, cbx, -cby, y=y + lz)
 
 
 def build_village():

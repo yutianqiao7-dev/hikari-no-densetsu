@@ -281,7 +281,7 @@ export class World {
     const m = this.map;
     this.grass.update(player, player);
     this.veg.update(camPos, this.camera);
-    for (const w of m.windows) w.emissiveIntensity = 0.3 + night * 5.5 + this.sky.dusk * 1.5;
+    for (const w of m.windows) w.emissiveIntensity = 0.04 + night * 5.5 + this.sky.dusk * 1.5;
     for (const g of m.glow) g.emissiveIntensity = glowI;
     for (const l of m.lava) l.emissiveIntensity = lavaI;
     this.amb.update(dt, t, camPos, this.sky);

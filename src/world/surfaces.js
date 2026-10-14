@@ -12,103 +12,83 @@ export const CUT = {
 };
 
 /**
- * Blender から来た単色マテリアルに、ワールド座標ベースのプロシージャル模様を足す。
- *  石：石積み（目地・石ごとの色むら・汚れ）、屋根：瓦の段、木：木目、漆喰：ムラ
+ * Blender から来た単色マテリアルに、ワールド座標で貼る PBR テクスチャ（scripts/gen_textures.py で生成）を足す。
+ *   色（平均 0.5 → マテリアル色に ×2）、法線（凹凸）、R=AO / G=粗さ
+ * UV なしで貼れるよう、面の向きで 3 方向から投影して混ぜる（屋根は横 2 方向だけ・段は水平）。
  */
-const PATTERNS = {
+const TEX = {
+  stone: { size: 3.6, normal: 0.85, ao: 0.55 },
+  flagstone: { size: 3.0, normal: 1.0 },
+  roof: { size: 2.0, normal: 1.0, sides: true },
+  wood: { size: 1.0, normal: 0.8 },
+  planks: { size: 2.0, normal: 0.9 },
+  plaster: { size: 2.5, normal: 0.9 },
+  rock: { size: 5.0, normal: 1.0 },
+  fabric: { size: 0.6, normal: 0.7 },
+};
+let texLo = false;
+/** 軽量設定では半分の解像度のテクスチャを使う */
+export function setTextureQuality(lo) { texLo = lo; }
+const texCache = {};
+function texSet(kind) {
+  if (texCache[kind]) return texCache[kind];
+  const L = new THREE.TextureLoader();
+  const base = `${import.meta.env.BASE_URL}assets/tex/${texLo ? 'lo/' : ''}${kind}`;
+  const load = (suf, srgb) => {
+    const t = L.load(`${base}_${suf}.jpg`);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    t.anisotropy = 8;
+    return t;
+  };
+  return (texCache[kind] = { a: load('a', true), n: load('n', false), m: load('m', false) });
+}
+
+// 3 方向投影（ホワイトアウト合成で法線も混ぜる）。roof は X/Z の 2 方向だけ
+const TRIPLANAR = (sides) => /* glsl */`
+    vec3 tpN = normalize(vN);
+    vec3 tpW = pow(abs(tpN), vec3(4.0));
+    ${sides ? 'tpW.y = 0.0; tpW += vec3(1e-4, 0.0, 1e-4);' : ''}
+    tpW /= (tpW.x + tpW.y + tpW.z);
+    vec3 tpP = vW / uTexS;
+    vec2 uvX = tpP.zy, uvY = tpP.xz, uvZ = tpP.xy;
+    vec3 tpS = sign(tpN);
+    uvX.x *= tpS.x; uvY.x *= tpS.y; uvZ.x *= -tpS.z;
+    vec3 tA = texture2D(uTexA, uvX).rgb * tpW.x + texture2D(uTexA, uvY).rgb * tpW.y + texture2D(uTexA, uvZ).rgb * tpW.z;
+    vec3 tM = texture2D(uTexM, uvX).rgb * tpW.x + texture2D(uTexM, uvY).rgb * tpW.y + texture2D(uTexM, uvZ).rgb * tpW.z;
+    vec3 nX = texture2D(uTexN, uvX).xyz * 2.0 - 1.0;
+    vec3 nY = texture2D(uTexN, uvY).xyz * 2.0 - 1.0;
+    vec3 nZ = texture2D(uTexN, uvZ).xyz * 2.0 - 1.0;
+    nX.x *= tpS.x; nY.x *= tpS.y; nZ.x *= -tpS.z;
+    nX.xy *= uTexNS; nY.xy *= uTexNS; nZ.xy *= uTexNS;
+    nX = vec3(nX.xy + tpN.zy, abs(nX.z) * tpN.x);
+    nY = vec3(nY.xy + tpN.xz, abs(nY.z) * tpN.y);
+    nZ = vec3(nZ.xy + tpN.xy, abs(nZ.z) * tpN.z);
+    tpWN = normalize(nX.zyx * tpW.x + nY.xzy * tpW.y + nZ.xyz * tpW.z);
+    diffuseColor.rgb *= tA * 2.0;
+    diffuseColor.rgb *= mix(1.0, tM.r, uTexAO);
+    vRough = tM.g / 0.85;
+`;
+
+// テクスチャのあとに足す、場所に応じた汚れ（地面ぎわ・雨だれ）
+const EXTRA = {
   stone: /* glsl */`
-    vec3 ap = abs(vN);
-    vec2 uv = ap.y > 0.7 ? vW.xz : (ap.x > ap.z ? vW.zy : vW.xy);
-    float rowH = 0.55;
-    float row = floor(uv.y / rowH);
-    float bx = uv.x / 1.1 + (mod(row, 2.0) * 0.5);
-    vec2 cell = vec2(floor(bx), row);
-    vec2 f = vec2(fract(bx), fract(uv.y / rowH));
-    float mortar = smoothstep(0.0, 0.035, f.x) * smoothstep(1.0, 0.965, f.x) * smoothstep(0.0, 0.07, f.y) * smoothstep(1.0, 0.93, f.y);
-    if (ap.y > 0.7) mortar = mix(mortar, 1.0, 0.6);
-    float var = h21(cell) - 0.5;
-    float grime = fbm3(vW.xz * 0.15 + vW.y * 0.05);
     float lowDirt = smoothstep(2.5, 0.0, vW.y - uGround(vW));
-    vec3 c = diffuseColor.rgb * (0.86 + var * 0.22) * (0.8 + 0.35 * vnoise(uv * 3.0));
-    c = mix(c * 0.45, c, mortar);
-    c *= 1.0 - grime * 0.25;
-    c = mix(c, c * vec3(0.75, 0.78, 0.6), lowDirt * 0.55);
-    diffuseColor.rgb = c;
-    vRough = mix(1.0, 0.85, mortar);
+    float grime = fbm3(vW.xz * 0.15 + vW.y * 0.05);
+    diffuseColor.rgb *= 1.0 - grime * 0.18;
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.72, 0.76, 0.58), lowDirt * 0.5);
+  `,
+  plaster: /* glsl */`
+    float low = smoothstep(1.4, 0.0, vW.y - uGround(vW));
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.7, 0.66, 0.56), low * 0.45);
+    diffuseColor.rgb *= 0.94 + 0.08 * fbm3(vW.xy * 0.2 + vW.zx * 0.2);
   `,
   roof: /* glsl */`
-    float rows = vW.y / 0.32;
-    float r = floor(rows);
-    float fx = (vW.x + vW.z) / 0.42 + mod(r, 2.0) * 0.5;
-    float fr = fract(rows);
-    float tile = smoothstep(0.0, 0.12, fr) * (0.75 + 0.25 * fr);
-    float edge = smoothstep(0.0, 0.08, fract(fx)) * smoothstep(1.0, 0.92, fract(fx));
-    float var = h21(vec2(floor(fx), r)) - 0.5;
-    vec3 c = diffuseColor.rgb * (0.85 + var * 0.25);
-    c *= mix(0.55, 1.0, tile) * mix(0.75, 1.0, edge);
-    c *= 0.85 + 0.25 * vnoise(vW.xz * 0.7);
-    diffuseColor.rgb = c;
-    vRough = 0.6 + 0.3 * (1.0 - tile);
-  `,
-  wood: /* glsl */`
-    vec3 ap = abs(vN);
-    float along = ap.y > 0.7 ? vW.x : vW.y;
-    float grain = sin((vW.x + vW.z) * 9.0 + vnoise(vec2(along * 0.6, vW.x + vW.z) * 2.0) * 6.0) * 0.5 + 0.5;
-    diffuseColor.rgb *= 0.78 + grain * 0.22 + (vnoise(vW.xy * 4.0 + vW.zz) - 0.5) * 0.15;
-    vRough = 0.85;
+    diffuseColor.rgb *= 0.88 + 0.2 * fbm3(vW.xz * 0.12);
   `,
   rock: /* glsl */`
-    vec3 ap = abs(vN);
-    vec2 uv = ap.y > 0.7 ? vW.xz : (ap.x > ap.z ? vW.zy : vW.xy);
-    float f1 = fbm3(uv * 0.35), f2 = vnoise(uv * 2.2), f3 = vnoise(uv * 7.0);
-    float strata = sin(vW.y * 2.3 + f1 * 6.0) * 0.5 + 0.5;
-    vec3 c = diffuseColor.rgb * (0.7 + f1 * 0.45) * (0.85 + f2 * 0.25) * (0.92 + f3 * 0.12);
-    c *= 0.85 + strata * 0.2;
-    // しめった筋と、床のあたりの苔
-    float wet = smoothstep(0.62, 0.8, vnoise(vec2(uv.x * 1.5, vW.y * 0.15)));
-    c = mix(c, c * 0.6, wet * (ap.y < 0.7 ? 1.0 : 0.0));
-    float moss = smoothstep(0.55, 0.75, fbm3(uv * 0.6 + 3.0)) * smoothstep(1.6, 0.0, vW.y) ;
-    c = mix(c, vec3(0.16, 0.24, 0.12), moss * 0.5);
-    diffuseColor.rgb = c;
-    vRough = mix(1.0, 0.45, wet);
-  `,
-  fabric: /* glsl */`
-    vec2 uv = vW.xz;
-    float weave = sin(uv.x * 60.0) * sin(uv.y * 60.0) * 0.5 + 0.5;
-    float n = fbm3(uv * 1.5);
-    vec3 c = diffuseColor.rgb * (0.8 + n * 0.3) * (0.93 + weave * 0.08);
-    // ふちの金色の模様
-    vec2 f = fract(uv / 2.0);
-    float edge = step(0.92, max(abs(f.x - 0.5), abs(f.y - 0.5)) * 2.0);
-    diffuseColor.rgb = c;
-    vRough = 1.0;
-  `,
-  planks: /* glsl */`
-    float pw = 0.28;
-    float row = floor(vW.z / pw);
-    float len = 1.6 + h21(vec2(row, 3.1)) * 1.2;
-    float px = vW.x / len + h21(vec2(row, 7.7));
-    float col = floor(px);
-    vec2 f = vec2(fract(px), fract(vW.z / pw));
-    float gap = smoothstep(0.0, 0.045, f.y) * smoothstep(1.0, 0.955, f.y) * smoothstep(0.0, 0.012, f.x) * smoothstep(1.0, 0.988, f.x);
-    float var = h21(vec2(col, row)) - 0.5;
-    float grain = vnoise(vec2(vW.x * 1.2, vW.z * 26.0 + row * 13.0)) * 0.6 + vnoise(vec2(vW.x * 4.0, vW.z * 60.0)) * 0.4;
-    float knot = smoothstep(0.08, 0.0, length(vec2(fract(px * 2.3 + row) - 0.5, (f.y - 0.5) * 0.35))) * step(0.7, h21(vec2(col * 1.3, row)));
-    vec3 c = diffuseColor.rgb * (0.9 + var * 0.35) * (0.82 + grain * 0.3);
-    c *= 1.0 - knot * 0.45;
-    c = mix(c * 0.35, c, gap);
-    diffuseColor.rgb = c;
-    vRough = mix(0.95, 0.55, gap);
-  `,
-  none: '',
-  plaster: /* glsl */`
-    float n = fbm3(vW.xy * 0.8 + vW.zx * 0.8);
-    float stain = smoothstep(0.55, 0.85, fbm3(vec2(vW.x + vW.z, vW.y * 2.5) * 0.35));
-    diffuseColor.rgb *= 0.9 + n * 0.14;
-    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.82, 0.78, 0.7), stain * 0.5);
-    float low = smoothstep(1.4, 0.0, vW.y - uGround(vW));
-    diffuseColor.rgb *= 1.0 - low * 0.25;
-    vRough = 0.95;
+    float moss = smoothstep(0.55, 0.75, fbm3(vW.xz * 0.3 + 3.0)) * smoothstep(1.6, 0.0, vW.y) * step(0.5, tpN.y + 0.6);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.16, 0.24, 0.12), moss * 0.4);
   `,
 };
 
@@ -128,11 +108,12 @@ const CUT_GLSL = /* glsl */`
 `;
 
 function kindOf(name) {
-  if (/^(Stone|StoneDark|TowerStone|StoneFloor|PyrStone|PyrStoneDark|SmithStone|SmithStoneDark|ChaosStone|ChaosStoneDark|SandFloor|ChaosFloor)$/.test(name)) return 'stone';
+  if (/^(StoneFloor|SandFloor|ChaosFloor)$/.test(name)) return 'flagstone';
+  if (/^(Stone|StoneDark|TowerStone|PyrStone|PyrStoneDark|SmithStone|SmithStoneDark|ChaosStone|ChaosStoneDark)$/.test(name)) return 'stone';
   if (/^(CaveRock|CaveRockDark|CaveFloor)$/.test(name)) return 'rock';
   if (/^Roof|TowerRoof/.test(name)) return 'roof';
   if (name === 'WoodFloor') return 'planks';
-  if (/^(Wood|WoodDark|Bark|Door|LogWood|LogWoodDark)$/.test(name)) return 'wood';
+  if (/^(Wood|WoodDark|Bark|Door|LogWood|LogWoodDark)$/.test(name) || /^Shutter/.test(name)) return 'wood';
   if (/^(Plaster|Adobe|AdobeDark)$/.test(name)) return 'plaster';
   if (/^(Carpet|TowerCarpet|RoyalCarpet|ChaosCarpet)$/.test(name)) return 'fabric';
   return null;
@@ -143,24 +124,37 @@ export function enhanceSurface(mat, heightTex, uvParams, cut = false, offU = nul
   const kind = kindOf(mat.name || '') || (cut ? 'none' : null);
   if (!kind || mat.userData.enhanced) return;
   mat.userData.enhanced = true;
-  if (kind === 'stone') mat.color.multiplyScalar(0.78);
+  const T = TEX[kind];
+  const tex = T ? texSet(kind) : null;
+  if (kind === 'stone') mat.color.multiplyScalar(0.85);
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uHeightT = { value: heightTex };
     sh.uniforms.uHFp = { value: uvParams };
     sh.uniforms.uHFo = off;
+    if (tex) {
+      sh.uniforms.uTexA = { value: tex.a };
+      sh.uniforms.uTexN = { value: tex.n };
+      sh.uniforms.uTexM = { value: tex.m };
+      sh.uniforms.uTexS = { value: T.size };
+      sh.uniforms.uTexNS = { value: T.normal };
+      sh.uniforms.uTexAO = { value: T.ao ?? 0.85 };
+    }
     if (cut) Object.assign(sh.uniforms, CUT);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vW;\nvarying vec3 vN;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvN = normalize(mat3(modelMatrix) * objectNormal);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vW;\nvarying vec3 vN;\nfloat vRough = 1.0;\n${NOISE}\nuniform sampler2D uHeightT;
+      .replace('#include <common>', `#include <common>\nvarying vec3 vW;\nvarying vec3 vN;\nfloat vRough = 1.0;\nvec3 tpWN = vec3(0.0);\n${NOISE}\nuniform sampler2D uHeightT;
 uniform vec4 uHFp;
 uniform vec2 uHFo;
+uniform sampler2D uTexA, uTexN, uTexM;
+uniform float uTexS, uTexNS, uTexAO;
 float uGround(vec3 p) { return texture2D(uHeightT, ((p.xz - uHFo + uHFp.x) / uHFp.y + 0.5) / uHFp.z).r; }`)
-      .replace('#include <color_fragment>', `#include <color_fragment>\n${cut ? CUT_GLSL : ''}\n${PATTERNS[kind]}`)
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= vRough;');
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${cut ? CUT_GLSL : ''}\n${tex ? TRIPLANAR(T.sides) : ''}\n${tex ? (EXTRA[kind] || '') : ''}`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= vRough;')
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${tex ? 'normal = normalize((viewMatrix * vec4(tpWN, 0.0)).xyz);' : ''}`);
     if (cut) sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uCutCam;\nuniform vec3 uCutTarget;\nuniform float uCutOn;\nuniform float uCutR;\nuniform float uCutNear;\nuniform float uCutTop;');
   };
-  mat.customProgramCacheKey = () => 'surface-' + kind + (cut ? '-cut' : '');
+  mat.customProgramCacheKey = () => 'surface2-' + kind + (cut ? '-cut' : '');
   mat.needsUpdate = true;
 }
