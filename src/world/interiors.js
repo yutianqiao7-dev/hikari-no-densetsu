@@ -185,7 +185,7 @@ export class Interiors {
     });
     // 炎のパーティクル
     this.emitT -= dt;
-    if (this.emitT <= 0) {
+    if (this.emitT <= 0 && !this.quiet) {
       this.emitT = 0.05;
       for (const p of f.torches) {
         if (p.distanceToSquared(heroPos) > 45 * 45) continue;

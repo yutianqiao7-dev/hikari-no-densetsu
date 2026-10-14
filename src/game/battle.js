@@ -3,6 +3,26 @@ import { Monster } from '../actors/actor.js';
 import { MONSTERS, SPELLS, ITEMS, MEMBERS } from './data.js';
 import { derived, knownSpells, gainExp, memberName } from './state.js';
 
+let _arenaShade = null;
+/** 屋内の戦闘の床のまわりを闇にとかすテクスチャ（200m 四方。半径 10m までは透明、24m で まっくら） */
+function arenaShade() {
+  if (_arenaShade) return _arenaShade;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 512;
+  const x = cv.getContext('2d');
+  const gr = x.createRadialGradient(256, 256, 0, 256, 256, 256);
+  gr.addColorStop(0, 'rgba(255,255,255,0)');
+  for (let k = 0; k <= 12; k++) {
+    const t = k / 12;
+    gr.addColorStop(0.1 + t * 0.14, `rgba(255,255,255,${(t * t * (3 - 2 * t)).toFixed(3)})`);
+  }
+  gr.addColorStop(1, 'rgba(255,255,255,1)');
+  x.fillStyle = gr;
+  x.fillRect(0, 0, 512, 512);
+  _arenaShade = new THREE.CanvasTexture(cv);
+  return _arenaShade;
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rnd = (a, b) => a + Math.random() * (b - a);
 const rint = (a, b) => Math.floor(rnd(a, b + 1));
@@ -46,11 +66,10 @@ export class Battle {
       if (dir.lengthSq() < 0.01) dir.set(Math.sin(f.facing), 0, Math.cos(f.facing));
       dir.normalize();
     } else dir = V(Math.sin(f.facing), 0, Math.cos(f.facing));
-    if (!f.inField && !boss) {
-      const best = this.roomyLine(heroPos, dir);
-      heroPos.copy(best.p);
-      dir = best.d;
-    }
+    // 屋内のふつうの戦闘は、戦うあいだだけ壁を消して広い床の上で戦う（敵が重ならない）
+    this.arena = null;
+    if (!f.inField && !boss) this.openArena(heroPos, dir);
+    const open = f.inField || !!this.arena;
     heroPos.y = env.height(heroPos.x, heroPos.z);
     this.dir = dir;
     this.right = V(dir.z, 0, -dir.x);
@@ -63,10 +82,10 @@ export class Battle {
     const n = party.length;
     const ordered = [...party.filter((m) => m.hp > 0), ...party.filter((m) => m.hp <= 0)];
     this.deadOrder = [];
-    let gap = f.inField ? 1.8 : 1.45;
+    let gap = open ? 1.8 : 1.45;
     // 屋内のせまい通路では横一列に入りきらないので、間をつめるか2列にする
     let rows = 1;
-    if (!f.inField && n > 1) {
+    if (!open && n > 1) {
       const halfW = Math.min(this.freeDist(heroPos, this.right, 4), this.freeDist(heroPos, this.right.clone().negate(), 4));
       const fit = (halfW - 0.45) * 2 / (n - 1);
       if (fit < 1.0) rows = 2;
@@ -114,11 +133,10 @@ export class Battle {
         f.removeMonster(sym);
       }
       const ne = keys.length;
-      const front = (f.inField ? 6.6 : 5.6) + (ne > 3 ? 1 : 0);
-      const spots = f.inField ? null : this.enemySlots(heroPos, dir, keys);
+      const front = 6.6 + (ne > 3 ? 1 : 0);
       keys.forEach((k, i) => {
         const lat = (i - (ne - 1) / 2) * 2.8;
-        const p = spots ? spots[i] : heroPos.clone().addScaledVector(dir, front + Math.abs(lat) * 0.22).addScaledVector(this.right, lat);
+        const p = heroPos.clone().addScaledVector(dir, front + Math.abs(lat) * 0.22).addScaledVector(this.right, lat);
         p.y = env.height(p.x, p.z);
         const mon = new Monster(this.g.world.lib, MONSTERS[k]);
         mon.root.position.copy(p);
@@ -147,11 +165,12 @@ export class Battle {
 
   /** 棺桶の置き場所（味方の列のうしろに横並び） */
   coffinSlot(k, total) {
-    let back = (this.rows || 1) * 1.7 + (this.f.inField ? 3.9 : 1.2);
+    const open = this.f.inField || !!this.arena;
+    let back = (this.rows || 1) * 1.7 + (open ? 3.9 : 1.2);
     const lat = (k - (total - 1) / 2) * 1.05;
     let p = this.center0.clone().addScaledVector(this.dir, -back).addScaledVector(this.right, lat);
     // 屋内では壁にめり込まない所まで前へ
-    while (!this.f.inField && back > 0.8 && !this.f.env.walkable(p.x, p.z)) {
+    while (!open && back > 0.8 && !this.f.env.walkable(p.x, p.z)) {
       back -= 0.4;
       p = this.center0.clone().addScaledVector(this.dir, -back).addScaledVector(this.right, lat * 0.8);
     }
@@ -224,118 +243,39 @@ export class Battle {
     return s;
   }
 
-  /**
-   * 屋内の敵の立ち位置：通路の幅に合わせて横に並べ、入りきらなければ奥の列へ。
-   * 体の大きさに応じて間をあけ、敵同士が重ならないようにする。
-   */
-  enemySlots(heroPos, dir, keys) {
-    const size = (k) => 0.6 + 0.5 * (MONSTERS[k].scale || 1);
-    const cands = [];
-    for (let row = 0; row < 5; row++) {
-      const d = 5.0 + row * 2.6;
-      // せまい通路（はば 5m 未満）では、左右のかべぎわに交互に立たせて ジグザグに並べる
-      const mid = heroPos.clone().addScaledVector(dir, d);
-      const halfW = Math.min(this.freeDist(mid, this.right, 4), this.freeDist(mid, this.right.clone().negate(), 4));
-      let lats;
-      if (halfW < 2.5) {
-        const w = Math.max(halfW - 0.5, 0.4), sg = row % 2 ? -1 : 1;
-        lats = [sg * w, -sg * w, 0];
-      } else lats = [...Array(9)].map((_, c) => (c % 2 ? 1 : -1) * Math.ceil(c / 2) * 1.05);
-      for (const lat of lats) cands.push({ p: mid.clone().addScaledVector(dir, Math.abs(lat) * 0.15).addScaledVector(this.right, lat), row, lat });
-    }
-    // 勇者から床つづきで見える場所だけ（かべの向こうの別の通路に立たせない）
-    const env = this.f.env;
-    for (const c of cands) {
-      const n = Math.ceil(heroPos.distanceTo(c.p) / 0.35);
-      c.seen = true;
-      for (let i = 1; i <= n && c.seen; i++) {
-        const t = i / n;
-        if (!env.walkable(heroPos.x + (c.p.x - heroPos.x) * t, heroPos.z + (c.p.z - heroPos.z) * t)) c.seen = false;
-      }
-    }
-    const out = [];
-    for (const k of keys) {
-      const r = size(k);
-      let pick = null;
-      // 1回目は手前の敵のま後ろ（カメラから隠れる位置）を避ける。
-      // 2回目は せまい通路用に、かべぎわまで寄って左右にずらす。3回目はま後ろも許す
-      for (const [strict, wall] of [[true, Math.min(r * 0.7, 1.2)], [true, 0.3], [false, Math.min(r * 0.7, 1.2)]]) {
-        for (const c of cands) {
-          if (c.used || !this.clearAt(c.p, wall) || !c.seen) continue;
-          if (out.some((o) => o.p.distanceTo(c.p) < o.r + r)) continue;
-          if (strict && out.some((o) => o.row < c.row && Math.abs(o.lat - c.lat) < (o.r + r) * 0.5)) continue;
-          pick = c;
-          break;
-        }
-        if (pick) break;
-      }
-      if (!pick) {
-        // どうしても空かなければ、ほかの敵からいちばん遠い候補
-        let best = -1;
-        for (const c of cands) {
-          if (c.used || !c.seen) continue;
-          const dmin = Math.min(...out.map((o) => o.p.distanceTo(c.p) - o.r), 99);
-          if (dmin > best) { best = dmin; pick = c; }
-        }
-      }
-      pick = pick || cands[out.length];
-      pick.used = true;
-      out.push({ p: pick.p.clone(), r, row: pick.row, lat: pick.lat });
-    }
-    return out.map((o) => o.p);
+  /** 屋内の戦闘：フロアごと隠し、同じ床の素材の広い円盤を敷く。まわりは闇にとける */
+  openArena(heroPos, dir) {
+    const env = this.f.env, grp = env.group;
+    const c = heroPos.clone().addScaledVector(dir, 3);
+    let mat = null;
+    const fl = grp.getObjectByName(`INT_${env.id}_Floor`);
+    if (fl) fl.traverse((o) => { if (o.isMesh && !mat && o.material.name !== 'Abyss') mat = o.material; });
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(40, 96).rotateX(-Math.PI / 2), mat || new THREE.MeshStandardMaterial({ color: 0x5b5146, roughness: 0.9 }));
+    floor.position.set(c.x, 0, c.z);
+    floor.receiveShadow = true;
+    const shade = new THREE.Mesh(new THREE.PlaneGeometry(200, 200).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x000000, map: arenaShade(), transparent: true, depthWrite: false, fog: false }));
+    shade.position.set(c.x, 0.03, c.z);
+    shade.renderOrder = 2;
+    this.g.scene.add(floor, shade);
+    // 壁・床・飾り・宝箱をまとめて隠す（床の素材は上で取り出した）
+    const hidden = grp.visible ? [grp] : [];
+    grp.visible = false;
+    this.g.world.interiors.quiet = true;     // かがり火の炎（台は消えている）を止める
+    this.arena = { c, hidden, floor, shade, own: !mat };
   }
 
-  /** 半径 r の円が床の上に収まるか（屋内用） */
-  clearAt(p, r) {
-    const env = this.f.env;
-    if (!env.walkable(p.x, p.z)) return false;
-    for (let k = 0; k < 8; k++) {
-      const a = k / 8 * Math.PI * 2;
-      if (!env.walkable(p.x + Math.cos(a) * r, p.z + Math.sin(a) * r)) return false;
-    }
-    return true;
-  }
-
-  /** 屋内の戦闘：味方と敵が並べてカメラも引ける、いちばん広い向きと立ち位置を探す */
-  roomyLine(p0, d0) {
-    const env = this.f.env;
-    const free = (p, d, max) => {
-      let s = 0;
-      while (s < max && env.walkable(p.x + d.x * (s + 0.5), p.z + d.z * (s + 0.5))) s += 0.5;
-      return s;
-    };
-    const cands = [p0.clone()];
-    if (env.cell) {
-      const i = Math.floor((p0.x - env.ox) / env.cell), j = Math.floor((p0.z - env.oz) / env.cell);
-      // せまい通路で戦うと敵が一列に重なるので、床つづきの近くのマス（2マス以内）にも移れるようにする
-      for (let di = -2; di <= 2; di++) {
-        for (let dj = -2; dj <= 2; dj++) {
-          const [cx, cz] = env.center(i + di, j + dj);
-          const c = V(cx, p0.y, cz);
-          const n = Math.ceil(p0.distanceTo(c) / 0.35);
-          let ok = true;
-          for (let k = 1; k <= n && ok; k++) ok = env.walkable(p0.x + (c.x - p0.x) * k / n, p0.z + (c.z - p0.z) * k / n);
-          if (ok) cands.push(c);
-        }
-      }
-    }
-    let best = { p: p0, d: d0, s: -1e9 };
-    for (const p of cands) {
-      if (!env.walkable(p.x, p.z)) continue;
-      for (let k = 0; k < 16; k++) {
-        const a = k / 16 * Math.PI * 2;
-        const d = V(Math.sin(a), 0, Math.cos(a));
-        const r = V(d.z, 0, -d.x);
-        const m = p.clone().addScaledVector(d, 6);
-        const ahead = Math.min(free(p, d, 11), 9);
-        const back = Math.min(free(p, d.clone().negate(), 6), 5);
-        const side = Math.min(free(m, r, 4), free(m, r.clone().negate(), 4));
-        const side0 = Math.min(free(p, r, 3), free(p, r.clone().negate(), 3));
-        const s = ahead + back * 0.8 + side * 1.3 + side0 * 0.8 + (d.dot(d0) > 0.9 ? 0.8 : 0) - p.distanceTo(p0) * 0.3;
-        if (s > best.s) best = { p, d, s };
-      }
-    }
-    return best;
+  closeArena() {
+    const a = this.arena;
+    if (!a) return;
+    for (const o of a.hidden) o.visible = true;
+    this.g.scene.remove(a.floor, a.shade);
+    a.floor.geometry.dispose();
+    if (a.own) a.floor.material.dispose();
+    a.shade.geometry.dispose();
+    a.shade.material.dispose();
+    this.g.world.interiors.quiet = false;
+    this.arena = null;
   }
 
   /** 敵（と味方）の高さを含む注目点 */
@@ -1166,6 +1106,7 @@ export class Battle {
     for (const a of this.allies) { if (a.m.hp > 0) a.h.stopOneShot(); a.h.speed = 0; }
     this.allies[0].h.setWeapon(false);
     this.g.world.veg.setExclude(null);
+    this.closeArena();
     this.f.setVisible(true);
     this.f.resetFollowers();
     this.g.renderer.grade.uniforms.uDesat.value = 0;
