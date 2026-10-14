@@ -110,7 +110,10 @@ def body_elems(cfg):
         for s in (-1, 1):
             el.append(E_ell((s * 0.05, -0.05, 1.27), 0.05, 0.045, 0.045))
     else:
-        el.append(E_ell((0, -0.03, 1.29), 0.12, 0.06, 0.07))
+        # 胸板：平たく横に広い（胸のふくらみに見えないように）
+        el.append(E_ell((0, -0.026, 1.295), 0.135, 0.05, 0.062))
+        for s in (-1, 1):
+            el.append(E_ell((s * 0.058, -0.04, 1.30), 0.06, 0.03, 0.042))
     if b == 'portly':
         el.append(E_ell((0, -0.035, 1.08), 0.17, 0.15, 0.16))
     for s in (-1, 1):
@@ -140,10 +143,8 @@ def body_elems(cfg):
             E_cap(elb, wr, 0.031 * lw),
             E_dir(elb.lerp(wr, 0.3), wr - elb, 0.07, 0.04 * lw, 0.037 * lw),
             E_ball(elb, 0.036 * lw),
-            # 手のひら・指（ミトン）・親指
-            E_dir(wr + hd * 0.035, hd, 0.04, 0.029 * lw, 0.015),
-            E_dir(wr + hd * 0.082, hd, 0.034, 0.027 * lw, 0.0125),
-            E_cap(wr + hd * 0.02 + Vector((0, -0.022, 0)), wr + hd * 0.055 + Vector((-s * 0.006, -0.036, 0)), 0.0105),
+            # 手首（手は build_hands で指まで作る）
+            E_dir(wr + hd * 0.012, hd, 0.026, 0.027 * lw, 0.017),
         ]
     # 脚
     for s in (-1, 1):
@@ -162,8 +163,6 @@ def body_elems(cfg):
             E_ball((s * 0.10, 0.03, 0.045), 0.045),
         ]
     # 服のふくらみ
-    if cfg.get('tunic_flare'):
-        el.append(E_ell((0, 0.004, 0.86), 0.17, 0.125, 0.07))
     return el
 
 
@@ -389,6 +388,189 @@ def build_face(cfg, surf):
     ob = mb.build(cfg['name'] + "_Face", COLL)
     rig_rigid(ob, 'head')
     return ob
+
+
+# ------------------------------------------------------------------ 手（5 本の指）
+def _basis_rot(x, y, z):
+    return Matrix((x, y, z)).transposed().to_euler()
+
+
+def build_hands(cfg):
+    b = cfg.get('build', 'male')
+    lw = 0.86 if b == 'female' else (1.0 if b != 'slim' else 0.9)
+    m = cmat(cfg, 'glove') if cfg.get('gloves') else cmat(cfg, 'skin')
+    mb = CMB()
+    for s_ in (-1, 1):
+        sd = 'L' if s_ > 0 else 'R'
+        wr = Vector(BMAP[f'forearm.{sd}'][2])
+        ht = Vector(BMAP[f'hand.{sd}'][2])
+        hd = (ht - wr).normalized()
+        inward = Vector((-s_, 0, 0))
+        pn = (inward - hd * inward.dot(hd)).normalized()       # 手のひらの向き（体のほう）
+        ac = hd.cross(pn).normalized()                          # 指の並ぶ向き
+        if ac.dot(Vector((0, -1, 0))) < 0:                       # 親指側（前）を + に
+            ac = -ac
+        # 手のひら・親指の付け根のふくらみ
+        mb.add('sphere', m, loc=wr + hd * 0.044 - pn * 0.002, rot=_basis_rot(ac, hd, pn), scale=(0.035 * lw, 0.05, 0.016 * lw))
+        mb.add('sphere', m, loc=wr + hd * 0.034 + ac * 0.02 * lw + pn * 0.004, rot=_basis_rot(ac, hd, pn), scale=(0.017 * lw, 0.024, 0.012 * lw))
+        # 4 本の指（人さし指が前）
+        for off, L in ((0.026, 0.042), (0.009, 0.047), (-0.008, 0.044), (-0.024, 0.035)):
+            base = wr + hd * 0.084 + ac * off * lw - pn * 0.002
+            d = hd.copy()
+            pts = [base - d * 0.01]
+            p = base.copy()
+            for frac, curl in ((0.45, 0.22), (0.3, 0.38), (0.25, 0.35)):
+                d = (d * math.cos(curl) + pn * math.sin(curl)).normalized()
+                p = p + d * L * frac
+                pts.append(p.copy())
+            rr = [0.0098 * lw, 0.0094 * lw, 0.0086 * lw, 0.0076 * lw]
+            mb.tube(pts, rr, m, seg=10)
+            mb.add('sphere', m, loc=pts[-1], scale=(0.0076 * lw, 0.0076 * lw, 0.0076 * lw), seg=10, rings=6)
+            # 指の付け根の関節（こぶし）
+            mb.add('sphere', m, loc=base - pn * 0.003, scale=(0.0105 * lw, 0.0105 * lw, 0.0105 * lw), seg=10, rings=6)
+        # 親指
+        base = wr + hd * 0.03 + ac * 0.03 * lw + pn * 0.008
+        d = (hd * 0.55 + ac * 0.62 + pn * 0.4).normalized()
+        pts = [base]
+        p = base.copy()
+        for Lk, curl in ((0.028, 0.25), (0.024, 0.35)):
+            d = (d * math.cos(curl) + (hd * 0.4 + pn * 0.9).normalized() * math.sin(curl)).normalized()
+            p = p + d * Lk
+            pts.append(p.copy())
+        mb.tube(pts, [0.0115 * lw, 0.0105 * lw, 0.0088 * lw], m, seg=10)
+        mb.add('sphere', m, loc=pts[-1], scale=(0.0088 * lw, 0.0088 * lw, 0.0088 * lw), seg=10, rings=6)
+    ob = mb.build(cfg['name'] + "_Hands", COLL)
+
+    def wf(v):
+        sd = 'L' if v.co.x > 0 else 'R'
+        wr = Vector(BMAP[f'forearm.{sd}'][2])
+        if (v.co - wr).length < 0.015:
+            return {f'hand.{sd}': 0.6, f'forearm.{sd}': 0.4}
+        return {f'hand.{sd}': 1.0}
+    assign_vgroups(ob, wf)
+    return ob
+
+
+# ------------------------------------------------------------------ チュニックのすそ（ひだのある布）
+def build_tunic_skirt(cfg):
+    if not cfg.get('tunic_flare') or cfg.get('robe') or cfg.get('dress'):
+        return []
+    tl = cfg.get('tunic_len', 0.8)
+    m = cmat(cfg, 'top')
+    prof = [(0.978, 0.146), (0.95, 0.152), (0.90, 0.168), (0.85, 0.184), (tl + 0.02, 0.198), (tl - 0.025, 0.206)]
+    folds, amp = 12, 0.045
+    seg = 72
+    verts, faces = [], []
+    for i, (z, r) in enumerate(prof):
+        u = i / (len(prof) - 1)
+        for k in range(seg):
+            a = k / seg * math.tau
+            rr = r * (1 + amp * u ** 1.4 * math.sin(a * folds + 0.5))
+            verts.append((math.sin(a) * rr, 0.006 - math.cos(a) * rr * 0.74, z))
+    for i in range(len(prof) - 1):
+        for k in range(seg):
+            a = i * seg + k
+            b = i * seg + (k + 1) % seg
+            faces.append((a, a + seg, b + seg, b))
+    mb = CMB()
+    mb.poly(verts, faces, m, smooth=True)
+    inner = mat(cfg['name'] + "_Lining", tuple(c * 0.5 for c in cfg['colors'].get('top', (0.5, 0.5, 0.5))), 0.9)
+    mb.poly([(x * 0.985, y * 0.985, z) for (x, y, z) in verts], [tuple(reversed(f)) for f in faces], inner, smooth=True)
+    # すその折り返し
+    zb, rb = prof[-1]
+    pts = []
+    for k in range(seg * 2 + 1):
+        a = k / (seg * 2) * math.tau
+        rr = rb * (1 + amp * math.sin(a * folds + 0.5)) + 0.002
+        pts.append(Vector((math.sin(a) * rr, 0.006 - math.cos(a) * rr * 0.74, zb + 0.006)))
+    trim = cmat(cfg, 'belt') if cfg['name'] != 'Hero' else mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+    mb.tube(pts, [0.0065] * len(pts), trim, seg=8, flat=1.3)
+    ob = mb.build(cfg['name'] + "_Skirt", COLL)
+    zt = prof[0][0]
+
+    def wf(v):
+        u = max(0.0, min(1.0, (zt - v.co.z) / (zt - zb)))
+        wl = 0.55 * u ** 1.2
+        if abs(v.co.x) < 0.03:
+            return {'hips': 1 - wl, 'thigh.L': wl / 2, 'thigh.R': wl / 2}
+        return {'hips': 1 - wl, ('thigh.L' if v.co.x > 0 else 'thigh.R'): wl}
+    assign_vgroups(ob, wf)
+    return [ob]
+
+
+# ------------------------------------------------------------------ 服のふち（袖口・手袋の折り返し・ブーツの口・襟）
+def limb_ring(mb, surf, a, b, t, add, r_tube, m, n=36, flat=1.4):
+    a, b = Vector(a), Vector(b)
+    c = a.lerp(b, t)
+    ax = (b - a).normalized()
+    u = ax.cross(Vector((0, 1, 0)))
+    if u.length < 1e-3:
+        u = ax.cross(Vector((1, 0, 0)))
+    u.normalize()
+    v = ax.cross(u).normalized()
+    pts = []
+    for k in range(n + 1):
+        ang = k / n * math.tau
+        d = u * math.cos(ang) + v * math.sin(ang)
+        hit, nn = surf.ray(c, d, 0.2)
+        if hit is None:
+            hit = c + d * 0.045
+        pts.append(hit + d * add)
+    mb.tube(pts, [r_tube] * len(pts), m, seg=8, flat=flat)
+
+
+def build_trims(cfg, surf):
+    mb = CMB()
+    any_ = False
+    sl = cfg.get('sleeves', 'long')
+    for sd in ('L', 'R'):
+        ua, fa, sh = BMAP[f'upper_arm.{sd}'], BMAP[f'forearm.{sd}'], BMAP[f'shin.{sd}']
+        if sl != 'long' and not cfg.get('robe'):
+            t = 0.6 if sl == 'short' else 0.12
+            limb_ring(mb, surf, ua[1], ua[2], t, 0.003, 0.0075, cmat(cfg, 'top'))
+            any_ = True
+        if cfg.get('gloves'):
+            # 手袋の口は外へ少し開いた二重の折り返し
+            limb_ring(mb, surf, fa[1], fa[2], 0.42, 0.006, 0.009, cmat(cfg, 'glove'), flat=1.6)
+            limb_ring(mb, surf, fa[1], fa[2], 0.36, 0.009, 0.007, cmat(cfg, 'glove'), flat=1.6)
+            any_ = True
+        elif sl == 'long' and not cfg.get('robe'):
+            limb_ring(mb, surf, fa[1], fa[2], 0.9, 0.003, 0.0065, cmat(cfg, 'top'))
+            any_ = True
+        if cfg.get('boots', True) and not cfg.get('robe'):
+            bh = cfg.get('boot_h', 0.33)
+            a, b = Vector(sh[1]), Vector(sh[2])
+            t = (a.z - bh) / (a.z - b.z)
+            if 0 < t < 1:
+                limb_ring(mb, surf, a, b, t, 0.007, 0.012, cmat(cfg, 'boot'), flat=1.5)
+                limb_ring(mb, surf, a, b, t - 0.05, 0.004, 0.008, cmat(cfg, 'boot'), flat=1.5)
+                any_ = True
+    # 襟
+    if not cfg.get('armor'):
+        rb = ring_around(surf, (0, 0.006, 1.425), 0.0, 0.003, 0.008, cmat(cfg, 'top'), n=40, flat=1.5)
+        _merge_cmb(mb, rb)
+        rb.bm.free()
+        any_ = True
+    if not any_:
+        return []
+    ob = mb.build(cfg['name'] + "_Trims", COLL)
+    assign_vgroups(ob, lambda v: weights_for(v.co, cfg))
+    return [ob]
+
+
+def _merge_cmb(dst, src):
+    """CMB src の面を dst に移す（材質番号も合わせる）"""
+    import bmesh as _bm
+    vm = {}
+    for v in src.bm.verts:
+        vm[v] = dst.bm.verts.new(v.co)
+    for f in src.bm.faces:
+        try:
+            nf = dst.bm.faces.new([vm[v] for v in f.verts])
+        except ValueError:
+            continue
+        nf.material_index = dst._mi(src.mats[f.material_index])
+        nf.smooth = f.smooth
 
 
 # ------------------------------------------------------------------ 髪
@@ -724,6 +906,26 @@ def build_gear(cfg, surf):
     def P(p):
         return HEAD_PIVOT + (Vector(p) - HEAD_PIVOT) * hs
 
+    # 胸元の編み上げひも（チュニック）
+    if cfg.get('lacing'):
+        lm = cmat(cfg, 'belt')
+        mb = CMB()
+        zs = [1.405 - k * 0.022 for k in range(5)]
+        pts = []
+        for k, z in enumerate(zs):
+            for sx in ((-1, 1) if k % 2 == 0 else (1, -1)):
+                q, nn = surf.front(sx * 0.016, z)
+                pts.append(q + nn * 0.004)
+        mb.tube(pts, [0.0024] * len(pts), lm, seg=6)
+        for z in zs:
+            for sx in (-1, 1):
+                q, nn = surf.front(sx * 0.016, z)
+                mb.add('sphere', gold, loc=q + nn * 0.003, scale=(0.0042, 0.0042, 0.0042), seg=8, rings=5)
+        q, nn = surf.front(0, zs[-1] - 0.01)
+        mb.tube([q + nn * 0.004, q + nn * 0.006 + Vector((0.008, 0, -0.035)), q + nn * 0.006 + Vector((0.004, 0, -0.06))], [0.0024, 0.0022, 0.0018], lm, seg=6)
+        ob = mb.build(name + "_Lacing", COLL)
+        rig_rigid(ob, 'chest')
+        out.append(ob)
     # ベルト
     if not cfg.get('robe') and not cfg.get('dress'):
         mb = ring_around(surf, (0, 0.004, 0.963), 0.0, 0.002, 0.016, cmat(cfg, 'belt'), flat=1.6)
@@ -986,7 +1188,8 @@ def build_character(cfg, x_offset):
                 region_of[vi] = k
     assign_vgroups(body, lambda v: weights_for(v.co, cfg, region_of.get(v.index)))
     surf = Surface(me)
-    parts = [body, build_face(cfg, surf), build_cape(cfg)] + build_beard(cfg) + build_hair(cfg, surf) + build_robe(cfg)
+    parts = [body, build_face(cfg, surf), build_cape(cfg), build_hands(cfg)] + build_beard(cfg) + build_hair(cfg, surf) + build_robe(cfg)
+    parts += build_tunic_skirt(cfg) + build_trims(cfg, surf)
     # 鎧・エプロン・ベスト
     if cfg.get('armor'):
         parts.append(build_shell(cfg, body, lambda c: 1.0 < c.z < 1.43 and abs(c.x) < 0.19, 0.012,
@@ -1009,7 +1212,7 @@ def build_character(cfg, x_offset):
 
 SKIN_C = (1.0, 0.80, 0.68)
 CHARS = [
-    dict(name='Hero', build='male', tunic_flare=True, tunic_len=0.80, sleeves='short', gloves=True, hair='spiky',
+    dict(name='Hero', build='male', tunic_flare=True, lacing=True, tunic_len=0.80, sleeves='short', gloves=True, hair='spiky',
          cape=(0.78, 0.13, 0.12), sword=True, shield=(0.18, 0.32, 0.72), eye=(0.30, 0.18, 0.10),
          colors=dict(skin=SKIN_C, top=(0.16, 0.38, 0.76), pants=(0.86, 0.82, 0.70), boot=(0.38, 0.23, 0.12),
                      belt=(0.32, 0.19, 0.10), glove=(0.42, 0.27, 0.14), hair=(0.24, 0.15, 0.09))),

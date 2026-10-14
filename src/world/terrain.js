@@ -122,6 +122,8 @@ export function buildTerrain(hf, gltfTerrainMesh, sharedIn = null) {
         float lush = smoothstep(0.5, 0.78, n3);
         float isGrass = smoothstep(0.0, 0.06, diffuseColor.g - max(diffuseColor.r, diffuseColor.b));
         diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.12, 1.08, 0.72), lush * isGrass * 0.6);
+        float tgl = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
+        diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(tgl), diffuseColor.rgb, 0.74) * vec3(1.04, 0.98, 0.84), isGrass);
         // 土の道：小石・湿ったまだら
         float dirt = smoothstep(0.0, 0.06, diffuseColor.r - diffuseColor.g) * (1.0 - smoothstep(0.55, 0.8, diffuseColor.b / max(diffuseColor.r, 0.01)));
         if (dirt > 0.01) {
