@@ -709,13 +709,13 @@ def build_hair(cfg, surf):
             faces.append((ri, k, (k + 1) % seg))
         mb.poly(verts, faces, hair_m, smooth=True)
 
-    def clump(th, ph0, ph1, width, ext=0.0, lift=0.0, droop=0.0, flat=0.42, twist=0.0, tail_down=0.0, steps=7, split=True):
+    def clump(th, ph0, ph1, width, ext=0.0, lift=0.0, droop=0.0, flat=0.42, twist=0.0, tail_down=0.0, steps=7, split=True, rise=0.0):
         pts, rad = [], []
         for i in range(steps):
             u = i / (steps - 1)
             ph = ph0 + (ph1 - ph0) * u
             t = th + twist * u
-            p = S(t, ph, 1.0 + 0.02 * math.sin(u * math.pi))
+            p = S(t, ph, 1.0 + 0.02 * math.sin(u * math.pi) + rise * u ** 1.6)
             pts.append(p)
         nrm = [outward(th + twist * (i / (steps - 1)), ph0 + (ph1 - ph0) * (i / (steps - 1))) for i in range(steps)]
         n_end = outward(th + twist, ph1)
@@ -767,13 +767,27 @@ def build_hair(cfg, surf):
                     ctr.append(T + Vector((s_ * dx, dy, dz)))
                 nrm = [((pp - cc) if (pp - cc).length > 1e-5 else Vector((s_, 0, 0))).normalized() for pp, cc in zip(pts, ctr)]
                 n = len(pts)
-                rad = [0.024 * (0.7 + 0.5 * math.sin(min(k / (n - 1) * 1.8, 1.0) * math.pi * 0.5)) * (1 - k / n) ** 0.7 + 0.001 for k in range(n)]
-                hair_lock([P(q) for q in pts], nrm, [r * hs for r in rad], 0.5)
+                rad = [0.028 * (0.7 + 0.5 * math.sin(min(k / (n - 1) * 1.8, 1.0) * math.pi * 0.5)) * (1 - k / n) ** 0.65 + 0.001 for k in range(n)]
+                hair_lock([P(q) for q in pts], nrm, [r * hs for r in rad], 0.9)
             rib = mat(cfg['name'] + "_Ribbon", cfg['colors'].get('ribbon', (1, 0.4, 0.55)), 0.5)
             make_bow(mb, P(T + Vector((s_ * 0.012, -0.005, 0.012))), Vector((0, -1, 0.2)), Vector((s_ * 0.3, 0, 1)), 0.045 * hs, rib, tails=True)
     if style in ('spiky', 'short', 'long'):
         # 前髪
         nb = 13 if style != 'short' else 10
+        if style == 'spiky':
+            nb = 0
+            for i in range(7):
+                u = i / 6 * 2 - 1
+                th = u * math.radians(55) + rng.uniform(-0.05, 0.05)
+                end = 1.3 + (0.12 if abs(u) < 0.4 else 0.04) * rng.uniform(0.6, 1.2) - abs(u) * 0.1
+                clump(th, 0.2, end, 0.042, ext=0.035, lift=0.25, droop=0.004, twist=-u * 0.35 + rng.uniform(-0.08, 0.08),
+                      flat=0.62, split=False)
+            for i in range(10):
+                u = i / 9 * 2 - 1
+                th = u * math.radians(48)
+                clump(th, 0.6 + rng.uniform(-0.05, 0.05), -0.45 - 0.35 * (1 - abs(u)) + rng.uniform(-0.1, 0.1), 0.05,
+                      ext=0.05 + 0.04 * (1 - abs(u)) + rng.uniform(0, 0.03), lift=0.45, droop=-0.01, flat=0.75, split=False,
+                      twist=u * 0.4, steps=9, rise=0.28 + 0.12 * (1 - abs(u)))
         for i in range(nb):
             u = i / (nb - 1) * 2 - 1
             th = u * math.radians(48)
@@ -786,8 +800,8 @@ def build_hair(cfg, surf):
             th = math.radians(55 + i / (ring - 1) * 250) + rng.uniform(-0.05, 0.05)
             back = -math.cos(th)  # 後ろほど 1
             if style == 'spiky':
-                clump(th, 0.1, 1.75 + 0.35 * max(back, 0), 0.034, ext=0.05 + 0.04 * max(back, 0), lift=0.55,
-                      droop=-0.01, twist=rng.uniform(-0.12, 0.12))
+                clump(th, 0.1, 1.7 + 0.35 * max(back, 0), 0.046, ext=0.06 + 0.05 * max(back, 0), lift=0.6,
+                      droop=-0.01, twist=rng.uniform(-0.12, 0.12), flat=0.62, split=False, rise=0.1)
             elif style == 'short':
                 clump(th, 0.1, 1.85 + 0.25 * max(back, 0), 0.03, ext=0.02, lift=0.1, droop=0.005)
             else:
@@ -795,9 +809,10 @@ def build_hair(cfg, surf):
                       tail_down=0.08 + 0.1 * max(back, 0), twist=rng.uniform(-0.05, 0.05))
         # 頭頂のツンツン
         if style == 'spiky':
-            for i in range(14):
-                th = math.radians(rng.uniform(60, 300))
-                clump(th, 0.05, rng.uniform(0.7, 1.15), 0.038, ext=rng.uniform(0.06, 0.1), lift=0.75, droop=-0.01, flat=0.5, split=False)
+            for i in range(5):
+                th = math.radians(140 + i * 20 + rng.uniform(-6, 6))
+                clump(th, 0.3, 1.1 + rng.uniform(0, 0.2), 0.05, ext=0.06 + rng.uniform(0, 0.04), lift=0.55,
+                      droop=-0.02, flat=0.7, split=False, twist=rng.uniform(-0.1, 0.1), rise=0.2)
             for s in (-1, 1):
                 clump(s * math.radians(80), 0.6, 2.1, 0.022, ext=0.025, lift=-0.1, droop=0.012, flat=0.5)
         if style == 'long' and cfg.get('braids'):
@@ -2268,11 +2283,20 @@ def make_actions(arm):
     for f in range(0, 61, 10):
         p = f / 60 * math.tau
         br = math.sin(p)
+        # 右足に重心を乗せた立ち方（腰と胸を逆にひねる・左ひざを軽く曲げる）、腕は力を抜いて少し開く
         key_pose(arm, f, compose(BASE, {
-            'chest': R(x=-0.025 * br), 'neck': R(x=0.02 * br), 'head': R(z=0.05 * math.sin(p * 0.5), x=0.01 * br),
-            'upper_arm.L': R(y=-0.03 * br), 'upper_arm.R': R(y=0.03 * br),
+            'hips': R(y=0.035, z=0.07),
+            'spine': R(y=-0.015, z=-0.02),
+            'chest': R(x=-0.03 * br + 0.02, y=-0.03, z=-0.06),
+            'neck': R(x=0.02 * br, z=0.02),
+            'head': R(z=0.05 * math.sin(p * 0.5) + 0.03, x=0.015 * br - 0.02, y=0.04),
+            'thigh.L': R(x=-0.09, y=0.02, z=0.04), 'shin.L': R(x=0.18), 'foot.L': R(x=-0.09),
+            'thigh.R': R(z=-0.02),
+            'upper_arm.L': R(y=-0.03 * br + 0.07, x=0.05), 'upper_arm.R': R(y=0.03 * br - 0.05, x=0.03),
+            'forearm.L': ELB('L', 0.16), 'forearm.R': ELB('R', 0.1),
+            'hand.L': R(z=0.12, x=0.1), 'hand.R': R(z=-0.08),
             'cape.1': R(x=0.03 + 0.02 * br), 'cape.2': R(x=0.02 * br),
-        }), hip_dz=-0.004 * (1 - br) * 0.5)
+        }), hip_dz=-0.006 - 0.004 * (1 - br) * 0.5)
 
     def cyc(table, phi):
         """8 キーの周期テーブルを Catmull-Rom で補間（phi: 0..1）"""
