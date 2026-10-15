@@ -843,8 +843,8 @@ def build_hair(cfg, surf):
         for i in range(13):
             u = i / 12 * 2 - 1
             th = u * math.radians(50)
-            end = 1.38 + (0.07 if abs(u) < 0.35 else 0.0) - abs(u) * 0.04 + rng.uniform(-0.02, 0.02)
-            clump(th, 0.12, end, 0.023, ext=0.02, lift=0.18, droop=0.005, twist=-u * 0.25 + rng.uniform(-0.06, 0.06), split=False)
+            end = 1.3 + (0.06 if abs(u) < 0.35 else 0.0) - abs(u) * 0.04 + rng.uniform(-0.02, 0.02)
+            clump(th, 0.12, end, 0.023, ext=0.012, lift=0.18, droop=0.005, twist=-u * 0.25 + rng.uniform(-0.06, 0.06), split=False)
         for i in range(26):
             th = math.radians(58 + i / 25 * 244) + rng.uniform(-0.04, 0.04)
             clump(th, 0.1, 1.8 + 0.2 * max(-math.cos(th), 0), 0.03, ext=0.015, lift=0.1, droop=0.004, split=False)
@@ -877,7 +877,7 @@ def build_hair(cfg, surf):
             for i in range(7):
                 u = i / 6 * 2 - 1
                 th = u * math.radians(55) + rng.uniform(-0.05, 0.05)
-                end = 1.3 + (0.12 if abs(u) < 0.4 else 0.04) * rng.uniform(0.6, 1.2) - abs(u) * 0.1
+                end = 1.22 + (0.1 if abs(u) < 0.4 else 0.04) * rng.uniform(0.6, 1.2) - abs(u) * 0.1
                 clump(th, 0.2, end, 0.042, ext=0.035, lift=0.25, droop=0.004, twist=-u * 0.35 + rng.uniform(-0.08, 0.08),
                       flat=0.62, split=False)
             for i in range(10):
@@ -2263,7 +2263,7 @@ def build_character(cfg, x_offset):
     return arm_ob
 
 
-SKIN_C = (1.0, 0.77, 0.63)
+SKIN_C = (1.0, 0.75, 0.6)
 CHARS = [
     dict(name='Hero', scale=1.06, bracers=(0.4, 0.26, 0.14), boot_straps=True, shoulder_guard=(0.36, 0.22, 0.12), build='male', eye_style='cool', tunic_flare=True, lacing=True, tunic_len=0.80, sleeves='long', gloves='fingerless',
          hair='spiky', headband=(0.82, 0.12, 0.1), scarf=(0.8, 0.13, 0.1), bandolier=True, sword=True, shield=(0.16, 0.3, 0.68),
@@ -2299,7 +2299,7 @@ CHARS = [
                      hair=(0.9, 0.9, 0.9), beard=(0.95, 0.95, 0.95))),
     # ---- 仲間
     dict(name='Milia', boot_straps=True, eye_style='cute', puff=True, chest_bow=(1.0, 0.42, 0.6), bow_z=1.36, capelet=(0.98, 0.97, 0.95), capelet_bottom=1.36,
-         stockings=True, build='female', scale=0.92, head_scale=1.06, dress=True, sleeves='short', hair='twintails', staff='magic',
+         stockings=True, build='female', scale=0.92, head_scale=1.12, dress=True, sleeves='short', hair='twintails', staff='magic',
          witch_hat=(0.3, 0.16, 0.5), cape=(0.34, 0.18, 0.55), cape_len=0.66, eye=(0.15, 0.62, 0.4), boot_h=0.3,
          colors=dict(skin=SKIN_C, top=(0.52, 0.3, 0.78), dress=(0.46, 0.24, 0.7), pants=(0.96, 0.92, 0.86), boot=(0.34, 0.16, 0.36),
                      belt=(0.95, 0.75, 0.25), hair=(1.0, 0.5, 0.25), ribbon=(1.0, 0.42, 0.6), stock=(0.46, 0.24, 0.7), stock2=(0.98, 0.96, 0.95))),
@@ -2309,7 +2309,7 @@ CHARS = [
          colors=dict(skin=(0.9, 0.68, 0.52), top=(0.32, 0.24, 0.2), pants=(0.26, 0.22, 0.2), boot=(0.24, 0.15, 0.09), belt=(0.25, 0.16, 0.08),
                      glove=(0.32, 0.21, 0.12), hair=(0.62, 0.2, 0.08), beard=(0.55, 0.18, 0.08))),
     dict(name='Serena', pendant=True, eye_style='cute', capelet=(0.96, 0.96, 0.99), tabard=(0.22, 0.4, 0.82), bell_cuffs=True, chest_bow=(0.25, 0.45, 0.9), bow_z=1.31,
-         braids=True, flower=(1.0, 0.75, 0.82), build='female', scale=0.95, head_scale=1.04, robe=True, sleeves='long', hair='long', staff='gold',
+         braids=True, flower=(1.0, 0.75, 0.82), build='female', scale=0.95, head_scale=1.09, robe=True, sleeves='long', hair='long', staff='gold',
          circlet=True, eye=(0.22, 0.42, 0.88),
          colors=dict(skin=(1.0, 0.84, 0.74), top=(0.95, 0.95, 0.98), robe=(0.92, 0.93, 0.99), boot=(0.85, 0.8, 0.7),
                      hair=(0.9, 0.9, 0.97), ribbon=(0.3, 0.5, 0.9), sash=(0.25, 0.45, 0.85))),
@@ -2543,10 +2543,58 @@ def make_actions(arm):
             'head': R(x=0.06 * math.sin(p * 2), z=0.05 * math.sin(p)), 'chest': R(x=-0.02),
         }))
 
+    # ---- キャラごとの立ちポーズ（ゲーム側でキャラに合わせて Idle の代わりに使う）
+    def idle_variant(name, pose_fn, dz=0.0):
+        new_action(arm, name)
+        for f in range(0, 61, 10):
+            p = f / 60 * math.tau
+            br = math.sin(p)
+            key_pose(arm, f, compose(BASE, pose_fn(p, br)), hip_dz=dz - 0.004 * (1 - br) * 0.5)
+
+    # 勇者：足を開いて胸を張り、左手を腰に（堂々と）
+    idle_variant("IdleHero", lambda p, br: {
+        'hips': R(z=0.08), 'spine': R(x=-0.02), 'chest': R(x=-0.05 - 0.02 * br, z=-0.06), 'neck': R(x=-0.02),
+        'head': R(x=-0.04 + 0.01 * br, z=-0.04 + 0.03 * math.sin(p * 0.5)),
+        'thigh.L': R(y=-0.11, x=-0.03), 'shin.L': R(x=0.05), 'foot.L': R(y=0.1, x=-0.02),
+        'thigh.R': R(y=0.1, x=0.04), 'shin.R': R(x=0.03), 'foot.R': R(y=-0.09, x=-0.06),
+        'upper_arm.L': R(y=-0.14 - 0.02 * br, x=-0.06), 'forearm.L': ELB('L', 0.5), 'hand.L': R(z=0.15),
+        'upper_arm.R': R(y=-0.1 + 0.02 * br, x=0.04), 'forearm.R': ELB('R', 0.35), 'hand.R': R(z=-0.15),
+        'cape.1': R(x=0.03 + 0.02 * br), 'cape.2': R(x=0.02 * br),
+    }, dz=-0.008)
+    # ミリア：内また・左のかかとを上げ、首をかしげ、左手を胸元に（かわいく）
+    idle_variant("IdleCute", lambda p, br: {
+        'hips': R(y=-0.04, z=-0.06), 'chest': R(x=-0.02 * br, y=0.05, z=0.05), 'neck': R(y=0.04),
+        'head': R(y=0.14 + 0.03 * math.sin(p * 0.5), x=0.03, z=0.06),
+        'thigh.L': R(x=-0.04, y=0.08, z=-0.12), 'shin.L': R(x=0.42), 'foot.L': R(x=0.22),
+        'thigh.R': R(y=0.03, z=0.06),
+        'upper_arm.L': R(x=-0.45, y=0.42), 'forearm.L': ELB('L', 1.9), 'hand.L': R(z=-0.3, x=0.2),
+        'upper_arm.R': R(y=0.08, x=-0.04), 'forearm.R': ELB('R', 0.2),
+        'cape.1': R(x=0.03 + 0.02 * br), 'cape.2': R(x=0.02 * br),
+    }, dz=-0.01)
+    # セレナ：足をそろえて背筋をのばし、左手を胸に（しとやかに）
+    idle_variant("IdleGrace", lambda p, br: {
+        'hips': R(y=0.02), 'chest': R(x=-0.03 - 0.02 * br), 'neck': R(x=0.02),
+        'head': R(y=-0.09 + 0.02 * math.sin(p * 0.5), x=0.04),
+        'thigh.L': R(y=0.04, z=-0.04), 'thigh.R': R(y=-0.02, z=0.03, x=-0.03), 'shin.R': R(x=0.08), 'foot.R': R(x=-0.05),
+        'upper_arm.L': R(x=-0.38, y=0.36), 'forearm.L': ELB('L', 1.75), 'hand.L': R(z=-0.2),
+        'upper_arm.R': R(y=0.06), 'forearm.R': ELB('R', 0.15),
+        'cape.1': R(x=0.03 + 0.02 * br), 'cape.2': R(x=0.02 * br),
+    }, dz=-0.004)
+    # ガルド：大きく足を開き、胸を張って左のこぶしを腰に（たくましく）
+    idle_variant("IdleTough", lambda p, br: {
+        'hips': R(z=-0.05), 'chest': R(x=-0.06 - 0.025 * br, z=0.05), 'neck': R(x=0.04),
+        'head': R(x=0.03, z=0.04 * math.sin(p * 0.5)),
+        'thigh.L': R(y=-0.16), 'shin.L': R(x=0.06), 'foot.L': R(y=0.15),
+        'thigh.R': R(y=0.15), 'shin.R': R(x=0.06), 'foot.R': R(y=-0.14),
+        'upper_arm.L': R(y=-0.2 - 0.02 * br, x=-0.04), 'forearm.L': ELB('L', 0.55), 'hand.L': R(z=0.2),
+        'upper_arm.R': R(y=0.02, x=-0.06), 'forearm.R': ELB('R', 0.2),
+        'cape.1': R(x=0.03 + 0.02 * br), 'cape.2': R(x=0.02 * br),
+    }, dz=-0.02)
+
     # すべてのアクションを NLA トラックに積む（glTF に全クリップを書き出すため）
     ad = arm.animation_data
     ad.action = None
-    for nm in ("Idle", "Walk", "Run", "Attack", "Cast", "Hurt", "Victory", "Down", "Talk", "Ride"):
+    for nm in ("Idle", "Walk", "Run", "Attack", "Cast", "Hurt", "Victory", "Down", "Talk", "Ride", "IdleHero", "IdleCute", "IdleGrace", "IdleTough"):
         act = bpy.data.actions[nm]
         tr = ad.nla_tracks.new()
         tr.name = nm

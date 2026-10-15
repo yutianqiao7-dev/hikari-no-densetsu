@@ -17,6 +17,9 @@ export class Humanoid {
     this.speed = 0;
     this.heading = 0;
     this.oneShot = null;
+    // キャラごとの立ちポーズ
+    const idle = { Hero: 'IdleHero', Milia: 'IdleCute', Serena: 'IdleGrace', Gald: 'IdleTough' }[model];
+    if (idle && this.actions[idle]) this.actions.Idle = this.actions[idle];
     for (const k of ['Idle', 'Walk', 'Run']) {
       const a = this.actions[k];
       if (!a) continue;
