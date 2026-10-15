@@ -123,14 +123,15 @@ def body_elems(cfg):
     # 頭：頭がい・ほお・左右のあごの線・とがったあご先で、輪郭をはっきり
     head = [
         E_ell((0, 0.012, 1.628), 0.093, 0.103, 0.106),
-        E_ell((0, -0.03, 1.588), 0.06, 0.058, 0.048),
-        E_ell((0, -0.071, 1.523), 0.019, 0.017, 0.016),
+        E_ell((0, -0.026, 1.578), 0.062, 0.062, 0.055),
+        E_ell((0, -0.068, 1.524), 0.021, 0.019, 0.018),
         E_ell((0, -0.098, 1.581), 0.009, 0.012, 0.0145),
         E_cap((0, -0.088, 1.614), (0, -0.098, 1.586), 0.0052),
     ]
     for s in (-1, 1):
-        head.append(E_cap((s * 0.066, -0.004, 1.565), (s * 0.014, -0.066, 1.524), 0.0165 if not fem else 0.015))
-        head.append(E_ell((s * 0.049, -0.052, 1.588), 0.02, 0.016, 0.017))
+        # あごの線（なめらかに）と、ふっくらしたほお（くぼまないように）
+        head.append(E_cap((s * 0.063, -0.006, 1.563), (s * 0.016, -0.063, 1.526), 0.018 if not fem else 0.017))
+        head.append(E_ell((s * 0.038, -0.046, 1.566), 0.027, 0.023, 0.025))
         head.append(E_ell((s * 0.092, 0.006, 1.595), 0.011, 0.021, 0.03))
     el += [head_xf(e, hs) for e in head]
     # 腕
@@ -517,7 +518,7 @@ def build_face(cfg, surf):
             talk.append(on(u * 0.0135, 1.547 + smile(u) - 0.0006 - open_, 0.0005))
     face.add_shape(mob, 'Talk', talk)
     objs.append(mob)
-    line_m = mat(name + "_FaceLine", tuple(c * 0.5 for c in skin_c), 0.7)
+    line_m = mat(name + "_FaceLine", tuple(c * 0.62 for c in skin_c), 0.7)
     # 鼻の下の小さな影の線
     nose_m = mat(name + "_NoseLine", tuple(c * 0.72 for c in skin_c), 0.7)
     pts = [on(u * 0.0055, 1.5768 - abs(u) * 0.0012, 0.0006) for u in (-1, -0.5, 0, 0.5, 1)]
@@ -534,7 +535,7 @@ def build_face(cfg, surf):
             jpts.append(hit + nn * 0.0009)
     if len(jpts) > 4:
         n_ = len(jpts)
-        mb.tube(jpts, [0.0006 + 0.0011 * math.sin(math.pi * k / (n_ - 1)) for k in range(n_)], line_m, seg=6, flat=0.5)
+        mb.tube(jpts, [0.0004 + 0.0007 * math.sin(math.pi * k / (n_ - 1)) for k in range(n_)], line_m, seg=6, flat=0.5)
     if cfg.get('scar'):
         pts = [on(-0.06 + k * 0.006, 1.6 - k * 0.012, 0.0008) for k in range(5)]
         mb.tube(pts, [0.0006, 0.0012, 0.0013, 0.0011, 0.0005], mat(name + "_Scar", tuple(c * 0.7 for c in skin_c), 0.6), seg=6, flat=0.5)
