@@ -120,15 +120,17 @@ def body_elems(cfg):
         el.append(E_ell((s * 0.148 * sw, 0.008, 1.37), 0.062, 0.058, 0.055))
     el.append(E_cap((0, 0.008, 1.37), (0, -0.003, 1.52), 0.041 if not fem else 0.036))
     # 頭
+    # 頭：頭がい・ほお・左右のあごの線・とがったあご先で、輪郭をはっきり
     head = [
-        E_ell((0, 0.010, 1.625), 0.094, 0.104, 0.108),
-        E_ell((0, -0.024, 1.566), 0.056, 0.064, 0.056),
-        E_ell((0, -0.064, 1.529), 0.027, 0.024, 0.021),
-        E_ell((0, -0.097, 1.581), 0.0095, 0.012, 0.0145),
-        E_cap((0, -0.088, 1.612), (0, -0.097, 1.586), 0.0055),
+        E_ell((0, 0.012, 1.628), 0.093, 0.103, 0.106),
+        E_ell((0, -0.03, 1.588), 0.06, 0.058, 0.048),
+        E_ell((0, -0.071, 1.523), 0.019, 0.017, 0.016),
+        E_ell((0, -0.098, 1.581), 0.009, 0.012, 0.0145),
+        E_cap((0, -0.088, 1.614), (0, -0.098, 1.586), 0.0052),
     ]
     for s in (-1, 1):
-        head.append(E_ell((s * 0.041, -0.058, 1.576), 0.021, 0.017, 0.02))
+        head.append(E_cap((s * 0.066, -0.004, 1.565), (s * 0.014, -0.066, 1.524), 0.0165 if not fem else 0.015))
+        head.append(E_ell((s * 0.049, -0.052, 1.588), 0.02, 0.016, 0.017))
         head.append(E_ell((s * 0.092, 0.006, 1.595), 0.011, 0.021, 0.03))
     el += [head_xf(e, hs) for e in head]
     # 腕
@@ -515,6 +517,24 @@ def build_face(cfg, surf):
             talk.append(on(u * 0.0135, 1.547 + smile(u) - 0.0006 - open_, 0.0005))
     face.add_shape(mob, 'Talk', talk)
     objs.append(mob)
+    line_m = mat(name + "_FaceLine", tuple(c * 0.5 for c in skin_c), 0.7)
+    # 鼻の下の小さな影の線
+    nose_m = mat(name + "_NoseLine", tuple(c * 0.72 for c in skin_c), 0.7)
+    pts = [on(u * 0.0055, 1.5768 - abs(u) * 0.0012, 0.0006) for u in (-1, -0.5, 0, 0.5, 1)]
+    mb.tube(pts, [0.0002, 0.0005, 0.0006, 0.0005, 0.0002], nose_m, seg=6, flat=0.5)
+    # あごの下の輪郭線（耳の下からあご先へ）
+    jpts = []
+    for k in range(15):
+        th = (k / 14 * 2 - 1) * math.radians(70)
+        cpx, cpz = P(0.0, 1.578)
+        c3 = Vector((cpx, -0.01, cpz))
+        d = Vector((math.sin(th), -math.cos(th), -0.95)).normalized()
+        hit, nn = surf.ray(c3, d, 0.25)
+        if hit is not None:
+            jpts.append(hit + nn * 0.0009)
+    if len(jpts) > 4:
+        n_ = len(jpts)
+        mb.tube(jpts, [0.0006 + 0.0011 * math.sin(math.pi * k / (n_ - 1)) for k in range(n_)], line_m, seg=6, flat=0.5)
     if cfg.get('scar'):
         pts = [on(-0.06 + k * 0.006, 1.6 - k * 0.012, 0.0008) for k in range(5)]
         mb.tube(pts, [0.0006, 0.0012, 0.0013, 0.0011, 0.0005], mat(name + "_Scar", tuple(c * 0.7 for c in skin_c), 0.6), seg=6, flat=0.5)
@@ -882,6 +902,21 @@ def build_hair(cfg, surf):
                     hair_lock([P(q) for q in pts], nrm, [0.022 * hs * (1 - 0.6 * k / 21) + 0.002 for k in range(22)], 0.8)
             rib = mat(cfg['name'] + "_Ribbon", cfg['colors'].get('ribbon', (1, 0.4, 0.55)), 0.5)
             make_bow(mb, P(T + Vector((s_ * 0.012, -0.005, 0.012))), Vector((0, -1, 0.2)), Vector((s_ * 0.3, 0, 1)), 0.055 * hs, rib, tails=True)
+    if style == 'bob':
+        # 前髪と、肩の上で外へはねるふんわりボブ
+        for i in range(13):
+            u = i / 12 * 2 - 1
+            th = u * math.radians(52)
+            end = 1.3 + (0.06 if abs(u) < 0.35 else 0.0) - abs(u) * 0.03 + rng.uniform(-0.02, 0.02)
+            clump(th, 0.12, end, 0.024, ext=0.012, lift=0.18, droop=0.004, twist=-u * 0.25 + rng.uniform(-0.06, 0.06), split=False)
+        for i in range(28):
+            th = math.radians(56 + i / 27 * 248) + rng.uniform(-0.04, 0.04)
+            back = max(-math.cos(th), 0)
+            clump(th, 0.1, 2.2 + 0.1 * back, 0.038, ext=0.075 + 0.02 * back, lift=0.8, droop=-0.03, flat=0.65, split=False,
+                  rise=0.1 + 0.05 * back, twist=rng.uniform(-0.08, 0.08), tail_down=0.03)
+        for i in range(10):
+            th = math.radians(70 + i / 9 * 220)
+            clump(th, 0.08, 1.2, 0.04, ext=0.0, lift=0.0, flat=0.6, split=False, rise=0.12)
     if style in ('spiky', 'short', 'long'):
         # 前髪
         nb = 13 if style != 'short' else 10
@@ -2431,8 +2466,9 @@ def build_character(cfg, x_offset):
     name = cfg['name']
     print("character", name)
     arm_ob = make_armature(name)
-    me = meta_mesh(name + "_Body", body_elems(cfg), res=cfg.get('res', 0.0075))
-    me = decimate(me, cfg.get('faces', 18000))
+    party = name in ('Hero', 'Milia', 'Gald', 'Serena')
+    me = meta_mesh(name + "_Body", body_elems(cfg), res=cfg.get('res', 0.0058 if party else 0.0068))
+    me = decimate(me, cfg.get('faces', 28000 if party else 16000))
     cut_body(me, cfg)
     body = mesh_to_obj(me, name + "_Body")
     # 塗り分け
@@ -2542,9 +2578,9 @@ CHARS = [
          colors=dict(skin=(0.98, 0.80, 0.70), top=(0.48, 0.38, 0.55), robe=(0.44, 0.34, 0.52), boot=(0.3, 0.2, 0.1),
                      hair=(0.9, 0.9, 0.9), beard=(0.95, 0.95, 0.95))),
     # ---- 仲間
-    dict(name='Milia', drills=True, side_locks=True, back_bow=(1.0, 0.42, 0.6), sleeve_bows=(1.0, 0.42, 0.6),
+    dict(name='Milia', side_locks=True, back_bow=(1.0, 0.42, 0.6), sleeve_bows=(1.0, 0.42, 0.6),
          pompoms=(1.0, 0.98, 0.96), boot_straps=True, eye_style='cute', puff=True, chest_bow=(1.0, 0.42, 0.6), bow_z=1.36, capelet=(0.98, 0.97, 0.95), capelet_bottom=1.36,
-         stockings=True, build='female', scale=0.92, head_scale=1.12, dress=True, sleeves='short', hair='twintails', staff='magic',
+         stockings=True, build='female', scale=0.92, head_scale=1.12, dress=True, sleeves='short', hair='bob', staff='magic',
          witch_hat=(0.3, 0.16, 0.5), eye=(0.15, 0.62, 0.4), boot_h=0.3,
          colors=dict(skin=SKIN_C, top=(0.52, 0.3, 0.78), dress=(0.46, 0.24, 0.7), pants=(0.96, 0.92, 0.86), boot=(0.34, 0.16, 0.36),
                      belt=(0.95, 0.75, 0.25), hair=(1.0, 0.5, 0.25), ribbon=(1.0, 0.42, 0.6), stock=(0.46, 0.24, 0.7), stock2=(0.98, 0.96, 0.95))),

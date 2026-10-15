@@ -78,7 +78,7 @@ vec3 dtPerturb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float fd) {
 // 2 段にするのは色（拡散光）だけ。つや（鏡面反射）を変えると影の面で値が極端に大きくなる
 const LAMBERT = 'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );';
 const TOON_CHUNK = THREE.ShaderChunk.lights_physical_pars_fragment.replace(LAMBERT,
-  'reflectedLight.directDiffuse += toonStep( toonNL( geometryNormal, dotNL ) ) * directLight.color * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );');
+  'reflectedLight.directDiffuse += toonCol( toonNL( geometryNormal, dotNL ) ) * directLight.color * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );');
 if (TOON_CHUNK === THREE.ShaderChunk.lights_physical_pars_fragment) console.warn('toon: chunk not patched');
 
 /** キャラの陰を決める「決まった光」の向き（画面に対して左上・手前から）。いつも影の面がはっきり出る */
@@ -89,6 +89,11 @@ uniform vec3 uKeyDir;
 float toonStep(float x) {
   // 明るい面と影の面の 2 段（境目はごく細くぼかす）。明るい面の中にもうっすら段。肌は影を浅く
   return mix(${soft ? '0.5' : (char ? '0.2' : '0.28')}, 1.0, smoothstep(0.1, 0.14, x)) * (0.88 + 0.12 * smoothstep(0.5, 0.56, x));
+}
+vec3 toonCol(float x) {
+  ${soft ? `// 肌：影は赤みのある色ではっきり
+  float k = smoothstep(0.1, 0.14, x);
+  return mix(vec3(0.62, 0.4, 0.36), vec3(1.0), k) * (0.9 + 0.1 * smoothstep(0.5, 0.56, x));` : 'return vec3(toonStep(x));'}
 }
 float toonNL(vec3 n, float dl) {
   ${char ? 'return max(dot(n, uKeyDir), 0.0) * 0.75 + dl * 0.25;' : 'return dl;'}
