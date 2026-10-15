@@ -167,6 +167,57 @@ def body_elems(cfg):
     return el
 
 
+# ------------------------------------------------------------------ 服のしわ（体に塗った服の表面を布らしく波打たせる）
+def cloth_folds(me, cfg, keys):
+    vkey = {}
+    for p in me.polygons:
+        k = keys[p.material_index]
+        for vi in p.vertices:
+            vkey.setdefault(vi, k)
+    cloth = {'top', 'under', 'pants', 'dress', 'robe', 'stock', 'stock2'}
+    pass
+    bh = cfg.get('boot_h', 0.33)
+    sm = lambda e0, e1, x: max(0.0, min(1.0, (x - e0) / (e1 - e0))) ** 2 * (3 - 2 * max(0.0, min(1.0, (x - e0) / (e1 - e0))))
+    for v in me.vertices:
+        k = vkey.get(v.index)
+        if k not in cloth:
+            continue
+        p = v.co
+        n = v.normal
+        bn, t = nearest_bone(p)
+        b = bn.split('.')[0]
+        d = 0.0
+        if b in ('chest', 'spine', 'hips', 'shoulder') and k in ('top', 'dress', 'robe'):
+            ang = math.atan2(p.x, -p.y)
+            # ベルトの上のギャザー
+            d += 0.0035 * math.sin(ang * 15) * sm(1.1, 0.985, p.z) * sm(0.95, 0.985, p.z)
+            # わきの下から胸への斜めのしわ
+            ax = abs(p.x)
+            if 1.12 < p.z < 1.38 and ax > 0.06:
+                w = math.sin((ax * 1.4 + (p.z - 1.3)) * 70)
+                d += 0.0022 * w * sm(0.06, 0.12, ax) * sm(1.12, 1.2, p.z) * sm(1.38, 1.3, p.z)
+        elif b in ('upper_arm', 'forearm'):
+            sd = bn.split('.')[-1]
+            elb = Vector(BMAP[f'forearm.{sd}'][1])
+            wr = Vector(BMAP[f'forearm.{sd}'][2])
+            de = (p - elb).length
+            # ひじのしわ（内側ほど強く）
+            d += 0.0032 * math.sin(de * 260) * sm(0.075, 0.02, de)
+            # 手首のたるみ
+            dw = (p - wr).length
+            d += 0.003 * math.sin(dw * 220 + math.atan2(p.y, p.z) * 3) * sm(0.11, 0.05, dw) * (1.0 if k != 'stock' else 0.0)
+        elif b in ('thigh', 'shin') and k in ('pants', 'under'):
+            sd = bn.split('.')[-1]
+            kn = Vector(BMAP[f'shin.{sd}'][1])
+            dk = (p - kn).length
+            d += 0.0035 * math.sin(dk * 200) * sm(0.09, 0.025, dk)
+            # ブーツの上のたるみ
+            d += 0.004 * math.sin(math.atan2(p.x, p.y) * 5 + p.z * 90) * sm(bh + 0.1, bh + 0.02, p.z) * sm(bh - 0.01, bh + 0.02, p.z)
+        if d:
+            v.co = p + n * d * 1.5
+    me.update()
+
+
 # ------------------------------------------------------------------ 部位判定・ウェイト
 def side_ok(bn, x):
     if bn.endswith('.L') and x < -0.035:
@@ -2153,6 +2204,7 @@ def build_character(cfg, x_offset):
             keys.append(k)
             me.materials.append(cmat(cfg, k))
         p.material_index = keys.index(k)
+    cloth_folds(me, cfg, keys)
     region_of = {}
     for p in me.polygons:
         k = keys[p.material_index]
