@@ -13,15 +13,36 @@ from bkit import principled
 
 
 # ---------------------------------------------------------------- 目の形（テクスチャと立体で共通）
-def lid_top(a, fem):
-    """a = 0（目頭）..1（目じり）での上まぶたの高さ（0..1、目の板の中）"""
-    k = math.sin(math.pi * min(max(a, 0.0), 1.0))
-    peak = 0.5 + 0.43 * (k ** 0.75) + (0.05 if fem else 0.02) * a
-    return peak - (0.12 if a < 0.08 else 0.0) * (1 - a / 0.08)
+def _st(st):
+    if st is True:
+        return 'fem'
+    if st is False or st is None:
+        return 'male'
+    return st
 
 
-def lid_bot(a, fem):
-    k = math.sin(math.pi * min(max(a, 0.0), 1.0))
+def lid_top(a, st):
+    """a = 0（目頭）..1（目じり）での上まぶたの高さ（0..1、目の板の中）。st: male / fem / cool / cute"""
+    st = _st(st)
+    a = min(max(a, 0.0), 1.0)
+    k = math.sin(math.pi * a)
+    if st == 'cool':        # きりっと：上まぶたは平たく、目じりが上がる
+        v = 0.5 + 0.34 * (k ** 0.55) + 0.12 * a
+    elif st == 'cute':      # まるく大きい
+        v = 0.5 + 0.46 * (k ** 0.62) + 0.03 * a
+    else:
+        v = 0.5 + 0.43 * (k ** 0.75) + (0.05 if st == 'fem' else 0.02) * a
+    return v - (0.12 if a < 0.08 else 0.0) * (1 - a / 0.08)
+
+
+def lid_bot(a, st):
+    st = _st(st)
+    a = min(max(a, 0.0), 1.0)
+    k = math.sin(math.pi * a)
+    if st == 'cool':
+        return 0.5 - 0.26 * (k ** 1.1) + 0.13 * a
+    if st == 'cute':
+        return 0.5 - 0.37 * (k ** 1.0) + 0.04 * a
     return 0.5 - 0.33 * (k ** 1.1) + 0.06 * a
 
 
@@ -36,6 +57,8 @@ def _smooth(e0, e1, x):
 
 def eye_image(name, iris_rgb, fem, size=512):
     """目の絵（RGBA）。行は下から上（Blender の pixels の並び）"""
+    st = _st(fem)
+    IR = {'cool': (0.24, 0.31), 'cute': (0.29, 0.35)}.get(st, IRIS_R)
     n = size
     v, u = np.mgrid[0:n, 0:n] / (n - 1)          # u: 目頭→目じり, v: 下→上
     top = np.vectorize(lambda a: lid_top(a, fem))(u[0])[None, :]
@@ -49,8 +72,8 @@ def eye_image(name, iris_rgb, fem, size=512):
     sclera *= (1 - lid_sh[..., None] * np.array([0.42, 0.40, 0.32]))
     sclera *= (1 - corner[..., None] * np.array([0.18, 0.2, 0.15]))
     # 虹彩
-    dx = (u - IRIS_C[0]) / IRIS_R[0]
-    dy = (v - IRIS_C[1]) / IRIS_R[1]
+    dx = (u - IRIS_C[0]) / IR[0]
+    dy = (v - IRIS_C[1]) / IR[1]
     r = np.sqrt(dx * dx + dy * dy)
     ang = np.arctan2(dy, dx)
     iris_m = _smooth(1.0 + aa * 4, 1.0 - aa * 4, r)
@@ -75,7 +98,10 @@ def eye_image(name, iris_rgb, fem, size=512):
     col = col * (1 - pupil[..., None]) + np.array([0.02, 0.02, 0.03]) * pupil[..., None]
     rgb = sclera * (1 - iris_m[..., None]) + col * iris_m[..., None]
     # 光（大きい丸・小さい丸）
-    for (hx, hy, hr, hk) in ((IRIS_C[0] - 0.1, IRIS_C[1] + 0.14, 0.075, 1.0), (IRIS_C[0] + 0.1, IRIS_C[1] - 0.16, 0.035, 0.85)):
+    hl = [(IRIS_C[0] - 0.1, IRIS_C[1] + 0.14, 0.075, 1.0), (IRIS_C[0] + 0.1, IRIS_C[1] - 0.16, 0.035, 0.85)]
+    if st == 'cute':
+        hl += [(IRIS_C[0] - 0.02, IRIS_C[1] + 0.2, 0.03, 0.9), (IRIS_C[0] + 0.12, IRIS_C[1] + 0.05, 0.022, 0.7)]
+    for (hx, hy, hr, hk) in hl:
         d = np.sqrt(((u - hx) / hr) ** 2 + ((v - hy) / hr) ** 2)
         h = _smooth(1.0, 0.75, d) * hk * iris_m
         rgb = rgb * (1 - h[..., None]) + h[..., None]

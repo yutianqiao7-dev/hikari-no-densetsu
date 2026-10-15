@@ -230,6 +230,12 @@ def paint(cfg, bn, t, p):
         if 0.935 < z < 0.99:
             return 'belt'
         return 'top' if z > tl else 'pants'
+    if b in ('upper_arm', 'forearm') and 'under' in cfg['colors']:
+        if b == 'forearm' and cfg.get('gloves') and t > 0.42:
+            return 'glove'
+        return 'under'
+    if cfg.get('stockings') and b in ('thigh', 'shin') and cfg.get('boot_h', 0.33) <= z < 0.6:
+        return 'stock' if int(z / 0.045) % 2 == 0 else 'stock2'
     if b == 'upper_arm':
         sl = cfg.get('sleeves', 'long')
         if sl == 'long':
@@ -267,13 +273,19 @@ def boundary_planes(cfg):
         P += [(Vector((0, 0, 0.985)), up, lambda c: abs(c.x) < 0.36 and 0.6 < c.z < 1.2),
               (Vector((0, 0, 0.50)), up, lambda c: abs(c.x) < 0.36 and 0.3 < c.z < 0.7)]
     P.append((Vector((0, 0, 1.425)), up, lambda c: abs(c.x) < 0.1 and 1.3 < c.z < 1.55))
+    if cfg.get('stockings'):
+        for k in range(int(0.33 / 0.045), int(0.6 / 0.045) + 1):
+            P.append((Vector((0, 0, k * 0.045)), up, lambda c: 0.02 < abs(c.x) < 0.24 and 0.25 < c.z < 0.65))
     sl = cfg.get('sleeves', 'long')
     for sd, sx in (('L', 1), ('R', -1)):
         ua, fa = BMAP[f'upper_arm.{sd}'], BMAP[f'forearm.{sd}']
 
         def near(seg):
             return lambda c, seg=seg: seg_closest(c, seg[1], seg[2])[0] < 0.085 and c.x * sx > 0.1
-        if sl != 'long':
+        if 'under' in cfg['colors']:
+            a, b = Vector(ua[1]), Vector(ua[2])
+            P.append((a.lerp(b, 0.06), (b - a).normalized(), near(ua)))
+        elif sl != 'long':
             t = 0.6 if sl == 'short' else 0.12
             a, b = Vector(ua[1]), Vector(ua[2])
             P.append((a.lerp(b, t), (b - a).normalized(), near(ua)))
@@ -304,7 +316,7 @@ def cut_body(me, cfg):
 def cmat(cfg, key):
     name = cfg['name']
     defaults = {'belt': (0.30, 0.19, 0.10), 'pants': cfg['colors'].get('robe', (0.3, 0.3, 0.3)), 'glove': (0.4, 0.27, 0.15),
-                'boot': (0.32, 0.2, 0.1)}
+                'boot': (0.32, 0.2, 0.1), 'stock2': (0.97, 0.95, 0.92)}
     col = cfg['colors'].get(key, defaults.get(key, (0.5, 0.5, 0.5)))
     rough = {'skin': 0.55, 'glove': 0.6, 'boot': 0.55, 'belt': 0.6, 'hair': 0.45, 'metal': 0.3}.get(key, 0.85)
     metal = 1.0 if key in ('metal', 'gold') else 0.0
@@ -351,11 +363,12 @@ def build_face(cfg, surf):
     crease_m = mat(name + "_Crease", tuple(c * 0.72 for c in skin_c), 0.7)
     brow = mat(name + "_Brow", tuple(c * 0.7 for c in hair_c), 0.7)
     mouth = mat(name + "_Mouth", (0.62, 0.3, 0.28), 0.5)
-    eye_img = face.eye_image(name + "_EyeImg", cfg.get('eye', (0.25, 0.15, 0.08)), fem)
+    st_ = cfg.get('eye_style') or ('fem' if fem else 'male')
+    eye_img = face.eye_image(name + "_EyeImg", cfg.get('eye', (0.25, 0.15, 0.08)), st_)
     eye_m = face.tex_mat(name + "_EyeTex", eye_img, 0.12)
     objs = []
-    W = 0.042 if fem else 0.039
-    Hh = 0.039 if fem else 0.033
+    st = cfg.get('eye_style') or ('fem' if fem else 'male')
+    W, Hh = {'cute': (0.047, 0.046), 'cool': (0.042, 0.03), 'fem': (0.042, 0.039)}.get(st, (0.039, 0.033))
     if cfg.get('eyes') == 'adult':        # 大人の男性は少し細い目
         W *= 0.95
         Hh *= 0.74
@@ -369,19 +382,25 @@ def build_face(cfg, surf):
         for k in range(11):
             a = 0.06 + k / 10 * 0.94
             x = cx + s_ * (a - 0.5) * W
-            z = cz + (face.lid_top(a, fem) - 0.5) * Hh + 0.0012
+            z = cz + (face.lid_top(a, st) - 0.5) * Hh + 0.0012
             pts.append(on(x, z, 0.0024))
-            rad.append(0.0007 + 0.0026 * math.sin(math.pi * (0.12 + a * 0.82)) ** 0.6 * (0.6 + 0.4 * a))
+            rad.append((0.0007 + 0.0026 * math.sin(math.pi * (0.12 + a * 0.82)) ** 0.6 * (0.6 + 0.4 * a)) * (1.25 if st in ('cool', 'cute') else 1.0))
         for ext, up in ((0.07, 0.04), (0.13, 0.1)):
             a = 1 + ext
-            pts.append(on(cx + s_ * (a - 0.5) * W, cz + (face.lid_top(1.0, fem) - 0.5 + up) * Hh, 0.0024))
+            pts.append(on(cx + s_ * (a - 0.5) * W, cz + (face.lid_top(1.0, st) - 0.5 + up) * Hh, 0.0024))
             rad.append(0.0016 if ext < 0.1 else 0.0006)
         mb.tube(pts, rad, lash, seg=8, flat=0.55)
+        if st == 'cute':
+            # 目じりの長いまつ毛 2 本
+            for a0, up in ((0.82, 0.16), (0.93, 0.1)):
+                b0 = on(cx + s_ * (a0 - 0.5) * W, cz + (face.lid_top(a0, st) - 0.5) * Hh + 0.001, 0.0024)
+                b1 = on(cx + s_ * (a0 + 0.08 - 0.5) * W, cz + (face.lid_top(a0, st) - 0.5 + up) * Hh, 0.003)
+                mb.tube([b0, b1], [0.0011, 0.0003], lash, seg=6)
         # 下まつ毛（目じり側だけ細く）
-        pts = [on(cx + s_ * (a - 0.5) * W, cz + (face.lid_bot(a, fem) - 0.5) * Hh - 0.0006, 0.0018) for a in (0.5, 0.65, 0.8, 0.92, 1.0)]
+        pts = [on(cx + s_ * (a - 0.5) * W, cz + (face.lid_bot(a, st) - 0.5) * Hh - 0.0006, 0.0018) for a in (0.5, 0.65, 0.8, 0.92, 1.0)]
         mb.tube(pts, [0.0003, 0.0006, 0.0008, 0.0008, 0.0004], lash, seg=6, flat=0.6)
         # 二重の線
-        pts = [on(cx + s_ * (a - 0.5) * W, cz + (face.lid_top(a, fem) - 0.5 + 0.17) * Hh, 0.0012) for a in (0.25, 0.4, 0.55, 0.7, 0.85)]
+        pts = [on(cx + s_ * (a - 0.5) * W, cz + (face.lid_top(a, st) - 0.5 + 0.17) * Hh, 0.0012) for a in (0.25, 0.4, 0.55, 0.7, 0.85)]
         mb.tube(pts, [0.0003, 0.0006, 0.0007, 0.0006, 0.0003], crease_m, seg=6, flat=0.5)
         # 眉（細く、目じりへ細くなる）
         pts = []
@@ -398,6 +417,9 @@ def build_face(cfg, surf):
         u = (k - 4) / 4
         pts.append(on(u * 0.0145, 1.547 + abs(u) ** 2 * 0.0032 - (1 - abs(u)) * 0.0004, 0.0008))
     mb.tube(pts, [0.0005, 0.0011, 0.0016, 0.0019, 0.002, 0.0019, 0.0016, 0.0011, 0.0005], mouth, seg=6, flat=0.55)
+    if cfg.get('scar'):
+        pts = [on(-0.06 + k * 0.006, 1.6 - k * 0.012, 0.0008) for k in range(5)]
+        mb.tube(pts, [0.0006, 0.0012, 0.0013, 0.0011, 0.0005], mat(name + "_Scar", tuple(c * 0.7 for c in skin_c), 0.6), seg=6, flat=0.5)
     ob = mb.build(name + "_Face", COLL)
     objs.append(ob)
     # ほお紅
@@ -421,6 +443,9 @@ def build_hands(cfg):
     b = cfg.get('build', 'male')
     lw = 0.86 if b == 'female' else (1.0 if b != 'slim' else 0.9)
     m = cmat(cfg, 'glove') if cfg.get('gloves') else cmat(cfg, 'skin')
+    palm_m = m
+    if cfg.get('gloves') == 'fingerless':
+        m = cmat(cfg, 'skin')
     mb = CMB()
     for s_ in (-1, 1):
         sd = 'L' if s_ > 0 else 'R'
@@ -433,8 +458,8 @@ def build_hands(cfg):
         if ac.dot(Vector((0, -1, 0))) < 0:                       # 親指側（前）を + に
             ac = -ac
         # 手のひら・親指の付け根のふくらみ
-        mb.add('sphere', m, loc=wr + hd * 0.044 - pn * 0.002, rot=_basis_rot(ac, hd, pn), scale=(0.035 * lw, 0.05, 0.016 * lw))
-        mb.add('sphere', m, loc=wr + hd * 0.034 + ac * 0.02 * lw + pn * 0.004, rot=_basis_rot(ac, hd, pn), scale=(0.017 * lw, 0.024, 0.012 * lw))
+        mb.add('sphere', palm_m, loc=wr + hd * 0.044 - pn * 0.002, rot=_basis_rot(ac, hd, pn), scale=(0.036 * lw, 0.05, 0.017 * lw))
+        mb.add('sphere', palm_m, loc=wr + hd * 0.034 + ac * 0.02 * lw + pn * 0.004, rot=_basis_rot(ac, hd, pn), scale=(0.018 * lw, 0.024, 0.013 * lw))
         # 4 本の指（人さし指が前）
         for off, L in ((0.026, 0.042), (0.009, 0.047), (-0.008, 0.044), (-0.024, 0.035)):
             base = wr + hd * 0.084 + ac * off * lw - pn * 0.002
@@ -547,7 +572,10 @@ def build_trims(cfg, surf):
     sl = cfg.get('sleeves', 'long')
     for sd in ('L', 'R'):
         ua, fa, sh = BMAP[f'upper_arm.{sd}'], BMAP[f'forearm.{sd}'], BMAP[f'shin.{sd}']
-        if sl != 'long' and not cfg.get('robe'):
+        if 'under' in cfg['colors']:
+            limb_ring(mb, surf, ua[1], ua[2], 0.06, 0.004, 0.0065, mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0))
+            any_ = True
+        elif sl != 'long' and not cfg.get('robe'):
             t = 0.6 if sl == 'short' else 0.12
             limb_ring(mb, surf, ua[1], ua[2], t, 0.003, 0.0075, cmat(cfg, 'top'))
             any_ = True
@@ -610,6 +638,8 @@ def build_hair(cfg, surf):
     style = cfg.get('hair', 'short')
     if style in ('none', 'helmet'):
         return []
+    if style == 'twintails':
+        pass
     hs = cfg.get('head_scale', 0.98)
     hair_m = cmat(cfg, 'hair')
     rng = random.Random(sum(map(ord, cfg['name'])))
@@ -636,7 +666,7 @@ def build_hair(cfg, surf):
         cap_m = hair_m
     else:
         elems = [E_ell(C + Vector((0, 0.004, 0.006)), RX * 0.985, RY * 0.985, RZ * 0.97)]
-        if style == 'long':
+        if style == 'long' and not cfg.get('braids'):
             elems += [E_ell((0, 0.07, 1.50), 0.1, 0.05, 0.14), E_ell((0, 0.074, 1.39), 0.094, 0.04, 0.09)]
         cap_m = hair_m
     me = meta_mesh(cfg['name'] + "_Hair", [head_xf(e, hs) for e in elems], res=0.006)
@@ -710,6 +740,37 @@ def build_hair(cfg, surf):
                 pts2[-1] = pts2[-1] + sd * width * 0.25 * sgn + Vector((0, 0, -0.004))
                 hair_lock([P(q) for q in pts2[n // 2:]], nrm[n // 2:], [r * hs * 0.55 for r in rad[n // 2:]], flat)
 
+    if style == 'twintails':
+        # 前髪と、頭に沿った短めの横・後ろ
+        for i in range(13):
+            u = i / 12 * 2 - 1
+            th = u * math.radians(50)
+            end = 1.38 + (0.07 if abs(u) < 0.35 else 0.0) - abs(u) * 0.04 + rng.uniform(-0.02, 0.02)
+            clump(th, 0.12, end, 0.023, ext=0.02, lift=0.18, droop=0.005, twist=-u * 0.25 + rng.uniform(-0.06, 0.06), split=False)
+        for i in range(26):
+            th = math.radians(58 + i / 25 * 244) + rng.uniform(-0.04, 0.04)
+            clump(th, 0.1, 1.8 + 0.2 * max(-math.cos(th), 0), 0.03, ext=0.015, lift=0.1, droop=0.004, split=False)
+        for s_ in (-1, 1):
+            clump(s_ * math.radians(78), 0.5, 2.2, 0.02, ext=0.06, lift=0.0, tail_down=0.05, split=False)
+        # 左右の高い位置で結んだ房
+        for s_ in (-1, 1):
+            T = S(s_ * math.radians(112), 1.45, 1.03)
+            for j in range(12):
+                ang = j / 12 * math.tau
+                off = Vector((math.cos(ang) * 0.02 * s_, math.sin(ang) * 0.02, 0))
+                pts = [T + off * 0.4]
+                ctr = [T]
+                for k, (dx, dy, dz) in enumerate(((0.06, 0.03, 0.0), (0.1, 0.05, -0.08), (0.11, 0.06, -0.2), (0.09, 0.05, -0.32), (0.06, 0.04, -0.42), (0.035, 0.03, -0.48))):
+                    spread = 1.0 + 0.9 * min(k, 3) / 3
+                    q = T + Vector((s_ * dx, dy, dz)) + off * spread + Vector((rng.uniform(-1, 1) * 0.006, 0, rng.uniform(-1, 1) * 0.01))
+                    pts.append(q)
+                    ctr.append(T + Vector((s_ * dx, dy, dz)))
+                nrm = [((pp - cc) if (pp - cc).length > 1e-5 else Vector((s_, 0, 0))).normalized() for pp, cc in zip(pts, ctr)]
+                n = len(pts)
+                rad = [0.024 * (0.7 + 0.5 * math.sin(min(k / (n - 1) * 1.8, 1.0) * math.pi * 0.5)) * (1 - k / n) ** 0.7 + 0.001 for k in range(n)]
+                hair_lock([P(q) for q in pts], nrm, [r * hs for r in rad], 0.5)
+            rib = mat(cfg['name'] + "_Ribbon", cfg['colors'].get('ribbon', (1, 0.4, 0.55)), 0.5)
+            make_bow(mb, P(T + Vector((s_ * 0.012, -0.005, 0.012))), Vector((0, -1, 0.2)), Vector((s_ * 0.3, 0, 1)), 0.045 * hs, rib, tails=True)
     if style in ('spiky', 'short', 'long'):
         # 前髪
         nb = 13 if style != 'short' else 10
@@ -734,18 +795,41 @@ def build_hair(cfg, surf):
                       tail_down=0.08 + 0.1 * max(back, 0), twist=rng.uniform(-0.05, 0.05))
         # 頭頂のツンツン
         if style == 'spiky':
-            for i in range(8):
-                th = math.radians(rng.uniform(110, 250))
-                clump(th, 0.05, rng.uniform(0.95, 1.3), 0.036, ext=rng.uniform(0.035, 0.06), lift=0.45, droop=0.0, flat=0.5)
+            for i in range(14):
+                th = math.radians(rng.uniform(60, 300))
+                clump(th, 0.05, rng.uniform(0.7, 1.15), 0.038, ext=rng.uniform(0.06, 0.1), lift=0.75, droop=-0.01, flat=0.5, split=False)
             for s in (-1, 1):
                 clump(s * math.radians(80), 0.6, 2.1, 0.022, ext=0.025, lift=-0.1, droop=0.012, flat=0.5)
-        if style == 'long':
+        if style == 'long' and cfg.get('braids'):
+            # 顔の横の三つ編み（左右）
+            for s_ in (-1, 1):
+                top = S(s_ * math.radians(70), 1.7, 1.03)
+                prev = None
+                for k in range(24):
+                    q = top + Vector((s_ * 0.006 * math.sin(k * 0.35), -0.012 - 0.002 * k, -0.021 * k))
+                    sx = 1 if k % 2 == 0 else -1
+                    q2 = q + Vector((sx * 0.0055, 0, 0))
+                    w = 1 - k * 0.012
+                    mb.add('sphere', hair_m, loc=P(q2), rot=(0, sx * 0.62, 0), scale=(0.0115 * hs * w, 0.012 * hs * w, 0.021 * hs), seg=12, rings=8)
+                    prev = q
+                tie = mat(cfg['name'] + "_Ribbon", cfg['colors'].get('ribbon', (0.3, 0.5, 0.9)), 0.5)
+                mb.add('cyl', tie, loc=P(prev + Vector((0, 0, -0.02))), r1=0.011 * hs, r2=0.011 * hs, depth=0.012, seg=12)
+                mb.tube([P(prev + Vector((0, 0, -0.026))), P(prev + Vector((s_ * 0.008, 0, -0.06)))], [0.012 * hs, 0.004 * hs], hair_m, seg=10)
+        elif style == 'long':
             for s in (-1, 1):
                 clump(s * math.radians(60), 0.35, 1.9, 0.026, ext=0.16, lift=0.0, tail_down=0.06)
-            rib = mat(cfg['name'] + "_Ribbon", cfg['colors'].get('ribbon', (1, 0.4, 0.55)), 0.5)
-            for s in (-1, 1):
-                mb.add('sphere', rib, loc=P((s * 0.05, 0.118, 1.69)), rot=(0, s * 0.5, 0), scale=(0.045 * hs, 0.012, 0.03 * hs))
-            mb.add('sphere', rib, loc=P((0, 0.12, 1.69)), scale=(0.015, 0.015, 0.018))
+            if cfg.get('flower'):
+                # 花の髪飾り（5 枚の花びら）
+                fc = S(-math.radians(62), 0.62, 1.04)
+                pet = mat("Petal", cfg['flower'], 0.6)
+                for k in range(5):
+                    a = k / 5 * math.tau
+                    mb.add('sphere', pet, loc=P(fc + Vector((-0.004, math.cos(a) * 0.014, math.sin(a) * 0.014))), rot=(a, 0, 0),
+                           scale=(0.005, 0.013 * hs, 0.009 * hs), seg=10, rings=6)
+                mb.add('sphere', mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0), loc=P(fc + Vector((-0.008, 0, 0))), scale=(0.006, 0.006, 0.006), seg=8, rings=6)
+            elif not cfg.get('braids'):
+                rib = mat(cfg['name'] + "_Ribbon", cfg['colors'].get('ribbon', (1, 0.4, 0.55)), 0.5)
+                make_bow(mb, P(Vector((0, 0.12, 1.69))), Vector((-1, 0, 0)), Vector((0, 0, 1)), 0.04 * hs, rib, tails=False)
     if style == 'turban':
         band = cmat(cfg, 'hatband')
         pts = []
@@ -1123,10 +1207,10 @@ def build_gear(cfg, surf):
         for k in range(49):
             a = k / 48 * math.tau
             back = (1 - math.cos(a)) * 0.5
-            q = P((math.sin(a) * 0.118, 0.012 - math.cos(a) * 0.128, 1.662 + back * 0.03))
+            q = P((math.sin(a) * 0.109, 0.012 - math.cos(a) * 0.12, 1.648 + back * 0.035))
             pts.append(q)
         mb.tube(pts, [0.0075 * hs] * len(pts), bandm, seg=10, flat=1.5)
-        knot = P((0, 0.142, 1.692))
+        knot = P((0, 0.13, 1.682))
         mb.add('sphere', bandm, loc=knot, scale=(0.014, 0.012, 0.012))
         for s_ in (-1, 1):
             mb.tube([knot, knot + Vector((s_ * 0.025, 0.02, -0.04)), knot + Vector((s_ * 0.035, 0.035, -0.1))], [0.009, 0.008, 0.003],
@@ -1151,12 +1235,45 @@ def build_gear(cfg, surf):
     if cfg.get('witch_hat'):
         mb = CMB()
         hm = mat(name + "_Hat", cfg['witch_hat'], 0.8)
-        mb.add('cyl', hm, loc=P((0, 0.01, 1.715)), r1=0.215 * hs, r2=0.2 * hs, depth=0.018, seg=36)
-        mb.tube([P((0, 0.01, 1.70)), P((0, 0.02, 1.83)), P((0, 0.05, 1.95)), P((0, 0.12, 2.05)), P((0, 0.2, 2.07))],
-                [0.118 * hs, 0.088 * hs, 0.058 * hs, 0.025 * hs, 0.004], hm, seg=18)
-        ring = [P((math.sin(k / 32 * math.tau) * 0.118, 0.01 - math.cos(k / 32 * math.tau) * 0.118, 1.735)) for k in range(33)]
-        mb.tube(ring, [0.012 * hs] * 33, mat("HatBand", (0.95, 0.75, 0.25), 0.4, 0.6), seg=8, flat=1.6)
-        mb.add('ico', mat("MagicGlow", (0.75, 0.35, 1.0), 0.2, emit=(0.75, 0.30, 1.0), emit_strength=4.0), loc=P((0.0, -0.11, 1.738)), r=0.022, sub=1)
+        # 波打つ大きなつば
+        verts, faces = [], []
+        seg = 48
+        for r_, (rad, dz) in enumerate(((0.10, 0.0), (0.17, -0.004), (0.235, -0.012), (0.26, -0.02))):
+            for k in range(seg):
+                a = k / seg * math.tau
+                w = 0.012 * math.sin(a * 3) * (r_ / 3)
+                verts.append(P((math.sin(a) * rad, 0.01 - math.cos(a) * rad, 1.718 + dz + w + (0.012 if r_ == 3 and math.cos(a) > 0.3 else 0))))
+        for r_ in range(3):
+            for k in range(seg):
+                i0 = r_ * seg + k
+                i1 = r_ * seg + (k + 1) % seg
+                faces.append((i0, i1, i1 + seg, i0 + seg))
+        mb.poly([tuple(v) for v in verts], faces, hm, smooth=True)
+        mb.poly([tuple(Vector(v) + Vector((0, 0, -0.006))) for v in verts], [tuple(reversed(f)) for f in faces], hm, smooth=True)
+        # 先が後ろへ折れる円すい
+        mb.tube([P((0, 0.01, 1.70)), P((0, 0.02, 1.83)), P((0, 0.05, 1.94)), P((0, 0.11, 2.01)), P((0, 0.19, 2.02)), P((0, 0.25, 1.97)), P((0, 0.27, 1.92))],
+                [0.122 * hs, 0.092 * hs, 0.064 * hs, 0.04 * hs, 0.024 * hs, 0.012 * hs, 0.003], hm, seg=20)
+        ring = [P((math.sin(k / 40 * math.tau) * 0.121, 0.01 - math.cos(k / 40 * math.tau) * 0.121, 1.74)) for k in range(41)]
+        mb.tube(ring, [0.014 * hs] * 41, mat("HatBand", (0.95, 0.75, 0.25), 0.4, 0.6), seg=8, flat=1.6)
+        # 前の星のバックルと、先に下がる星
+        glow = mat("MagicGlow", (0.75, 0.35, 1.0), 0.2, emit=(0.75, 0.30, 1.0), emit_strength=4.0)
+        goldm = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+
+        def star(c, rr, nrm_y=-1):
+            pts = []
+            for k in range(10):
+                a = k / 10 * math.tau
+                q = rr if k % 2 == 0 else rr * 0.45
+                pts.append(tuple(c + Vector((math.sin(a) * q, 0, math.cos(a) * q))))
+            ctr = c + Vector((0, nrm_y * rr * 0.35, 0))
+            back = c + Vector((0, -nrm_y * rr * 0.25, 0))
+            mb.poly([tuple(ctr)] + pts, [(0, i + 1, (i + 1) % 10 + 1) for i in range(10)], goldm)
+            mb.poly([tuple(back)] + pts, [(0, (i + 1) % 10 + 1, i + 1) for i in range(10)], goldm)
+        star(P((0, -0.118, 1.745)), 0.022 * hs)
+        tipc = P((0, 0.27, 1.92))
+        mb.tube([tipc, tipc + Vector((0, 0.01, -0.06))], [0.002, 0.002], goldm, seg=6)
+        star(tipc + Vector((0, 0.01, -0.08)), 0.02 * hs)
+        mb.add('ico', glow, loc=P((0, -0.124, 1.745)), r=0.007, sub=1)
         ob = mb.build(name + "_Hat", COLL)
         rig_rigid(ob, 'head')
         out.append(ob)
@@ -1371,6 +1488,186 @@ def build_gear(cfg, surf):
     return out
 
 
+# ------------------------------------------------------------------ デザインの部品（スカーフ・ベルト・ふくらみ袖・リボン・毛皮・三つ編み・ツインテール）
+def make_bow(mb, c, right, up, size, m, tails=True):
+    """リボン結び：左右の輪＋結び目＋垂れ"""
+    right, up = right.normalized(), up.normalized()
+    fwd = right.cross(up).normalized()
+    for sg in (-1, 1):
+        pts = []
+        for k in range(17):
+            t = k / 16
+            a = t * math.tau
+            pts.append(c + right * sg * size * (0.12 + 0.9 * math.sin(t * math.pi) ** 0.8) + up * size * 0.42 * math.sin(a) * (0.6 + 0.4 * math.sin(t * math.pi)) - fwd * size * 0.08 * math.sin(t * math.pi))
+        mb.tube(pts, [size * 0.16 * (0.5 + 0.5 * math.sin(k / 16 * math.pi)) + size * 0.03 for k in range(17)], m, seg=8, flat=0.4)
+        if tails:
+            mb.tube([c, c + right * sg * size * 0.35 - up * size * 0.6, c + right * sg * size * 0.55 - up * size * 1.25],
+                    [size * 0.12, size * 0.11, size * 0.05], m, seg=8, flat=0.35)
+    mb.add('sphere', m, loc=c, scale=(size * 0.2, size * 0.14, size * 0.2), seg=12, rings=8)
+
+
+def build_scarf(cfg, surf):
+    col = cfg.get('scarf')
+    if not col:
+        return []
+    m = mat(cfg['name'] + "_Scarf", col, 0.8, double=True)
+    mb = CMB()
+    c0 = Vector((0, 0.004, 1.43))
+    pts = []
+    for k in range(49):
+        ang = k / 48 * math.tau
+        d = Vector((math.sin(ang), -math.cos(ang), 0.0))
+        hit, nn = surf.ray(c0, d, 0.12)
+        dist = (hit - c0).length if hit is not None else 0.06
+        dist = min(dist, 0.06)
+        front = max(0.0, math.cos(ang))
+        pts.append(c0 + d * (dist + 0.022 + 0.004 * math.sin(ang * 7)) + Vector((0, 0, -0.012 * front + 0.004 * math.sin(ang * 5))))
+    mb.tube(pts, [0.024] * len(pts), m, seg=12, flat=0.75)
+    # 結び目と、背中へなびく 2 本の端
+    knot = Vector((-0.045, 0.05, 1.43))
+    mb.add('sphere', m, loc=knot, scale=(0.03, 0.028, 0.03))
+    rows, cols = 12, 3
+    for k, (dx, ln) in enumerate(((-0.02, 0.42), (0.025, 0.34))):
+        verts, faces = [], []
+        for r in range(rows + 1):
+            v = r / rows
+            w = 0.05 - 0.012 * v
+            cx = knot.x + dx + 0.03 * math.sin(v * 2.5 + k)
+            cy = knot.y + 0.03 + v * 0.12 + 0.015 * math.sin(v * 5 + k)
+            cz = knot.z - v * ln
+            for cc in range(cols + 1):
+                u = cc / cols * 2 - 1
+                verts.append((cx + u * w * 0.5, cy + 0.006 * math.sin(u * 3 + v * 6), cz))
+        for r in range(rows):
+            for cc in range(cols):
+                a_ = r * (cols + 1) + cc
+                faces.append((a_, a_ + 1, a_ + cols + 2, a_ + cols + 1))
+        mb.poly(verts, faces, m, smooth=True)
+    ob = mb.build(cfg['name'] + "_Scarf", COLL)
+
+    def wf(v):
+        z = v.co.z
+        if v.co.y < 0.06 or z > 1.38:
+            return weights_for(v.co, cfg)
+        k = max(0.0, min(1.0, (1.38 - z) / 0.36))
+        return {'chest': 1 - k, 'cape.1': k}
+    assign_vgroups(ob, wf)
+    return [ob]
+
+
+def build_bandolier(cfg, surf):
+    """肩から反対の腰へ斜めにかけた革ベルトとポーチ"""
+    if not cfg.get('bandolier'):
+        return []
+    lm = cmat(cfg, 'belt')
+    gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+    mb = CMB()
+    front, back = [], []
+    for k in range(13):
+        t = k / 12
+        x = 0.12 - 0.25 * t
+        z = 1.42 - 0.44 * t
+        q, nn = surf.front(x, z)
+        front.append(q + nn * 0.012)
+        hit, nn2 = surf.ray(Vector((x, 0.6, z)), Vector((0, -1, 0)), 1.0)
+        if hit is not None:
+            back.append(hit + nn2 * 0.012)
+    mb.tube(front, [0.017] * len(front), lm, seg=8, flat=0.3)
+    if len(back) > 3:
+        mb.tube(back, [0.017] * len(back), lm, seg=8, flat=0.3)
+    # 肩の上をまたぐ部分
+    mb.tube([front[0], Vector((0.125, 0.02, 1.455)), back[0] if back else front[0]], [0.017] * 3, lm, seg=8, flat=0.3)
+    q, nn = surf.front(0.035, 1.25)
+    mb.add('cube', gold, loc=q + nn * 0.016, rot=basis_euler(nn), scale=(0.03, 0.008, 0.026), bevel=0.003)
+    # ポーチ（ふた・留め金）
+    q, nn = surf.front(-0.135, 0.955)
+    pc = q + nn * 0.03
+    e = basis_euler(nn)
+    mb.add('cube', lm, loc=pc, rot=e, scale=(0.07, 0.045, 0.06), bevel=0.008)
+    mb.add('cube', lm, loc=pc + nn * 0.004 + Vector((0, 0, 0.022)), rot=e, scale=(0.074, 0.05, 0.026), bevel=0.006)
+    mb.add('sphere', gold, loc=pc + nn * 0.026 + Vector((0, 0, 0.012)), scale=(0.006, 0.006, 0.006), seg=8, rings=5)
+    ob = mb.build(cfg['name'] + "_Bandolier", COLL)
+    assign_vgroups(ob, lambda v: weights_for(v.co, cfg))
+    return [ob]
+
+
+def build_puff_sleeves(cfg, surf):
+    if not cfg.get('puff'):
+        return []
+    m = cmat(cfg, 'top')
+    cuff = mat("Frill", (1.0, 0.97, 0.95), 0.8)
+    mb = CMB()
+    for sd in ('L', 'R'):
+        ua = BMAP[f'upper_arm.{sd}']
+        a, b = Vector(ua[1]), Vector(ua[2])
+        ax = (b - a).normalized()
+        u = ax.cross(Vector((0, 1, 0))).normalized()
+        v = ax.cross(u).normalized()
+        seg, rows = 28, 10
+        verts, faces = [], []
+        for r in range(rows + 1):
+            t = -0.05 + 0.55 * r / rows
+            c = a.lerp(b, t)
+            base = 0.04 + 0.034 * math.sin(math.pi * r / rows) ** 0.8
+            for k in range(seg):
+                ang = k / seg * math.tau
+                rr = base * (1 + 0.07 * math.sin(ang * 8) * math.sin(math.pi * r / rows))
+                verts.append(tuple(c + (u * math.cos(ang) + v * math.sin(ang)) * rr))
+        for r in range(rows):
+            for k in range(seg):
+                i0 = r * seg + k
+                i1 = r * seg + (k + 1) % seg
+                faces.append((i0, i1, i1 + seg, i0 + seg))
+        mb.poly(verts, faces, m, smooth=True)
+        edge = [Vector(verts[rows * seg + k]) for k in range(seg)] + [Vector(verts[rows * seg])]
+        mb.tube(edge, [0.006] * len(edge), cuff, seg=8, flat=1.3)
+    ob = mb.build(cfg['name'] + "_Puffs", COLL)
+    assign_vgroups(ob, lambda v_: weights_for(v_.co, cfg))
+    return [ob]
+
+
+def build_chest_bow(cfg, surf):
+    col = cfg.get('chest_bow')
+    if not col:
+        return []
+    mb = CMB()
+    q, nn = surf.front(0, cfg.get('bow_z', 1.37))
+    make_bow(mb, q + nn * 0.03, Vector((1, 0, 0)), Vector((0, 0, 1)), 0.05, mat(cfg['name'] + "_Bow", col, 0.6))
+    ob = mb.build(cfg['name'] + "_ChestBow", COLL)
+    rig_rigid(ob, 'chest')
+    return [ob]
+
+
+def build_fur_mantle(cfg):
+    """肩をおおう毛皮：芯の上に短い毛束を何重にも並べる"""
+    col = cfg.get('fur_mantle')
+    if not col:
+        return []
+    m = mat(cfg['name'] + "_Fur", col, 0.95)
+    m2 = mat(cfg['name'] + "_FurDark", tuple(c * 0.7 for c in col), 0.95)
+    rng = random.Random(3)
+    mb = CMB()
+    core = []
+    for k in range(49):
+        a = k / 48 * math.tau
+        core.append(Vector((math.sin(a) * 0.18, 0.02 - math.cos(a) * 0.125, 1.405 + 0.02 * math.cos(a))))
+    mb.tube(core, [0.035] * len(core), m2, seg=12, flat=0.7)
+    for row, (rr, dz) in enumerate(((1.0, 0.03), (1.08, 0.0), (1.14, -0.03))):
+        n = 44
+        for k in range(n):
+            a = (k + 0.5 * row) / n * math.tau
+            out_ = Vector((math.sin(a), -math.cos(a) * 0.7, 0)).normalized()
+            base = Vector((math.sin(a) * 0.18 * rr, 0.02 - math.cos(a) * 0.125 * rr, 1.405 + 0.02 * math.cos(a) + dz))
+            L = rng.uniform(0.04, 0.065)
+            d = (out_ * 0.6 + Vector((0, 0, -0.8))).normalized()
+            pts = [base, base + d * L * 0.5 + Vector((0, 0, 0.004)), base + d * L + Vector((rng.uniform(-1, 1) * 0.008, 0, -0.004))]
+            nrm = [out_] * 3
+            lock_mesh(mb, pts, nrm, [0.018, 0.014, 0.003], 0.5, m if (k + row) % 3 else m2, seg=8)
+    ob = mb.build(cfg['name'] + "_FurMantle", COLL)
+    assign_vgroups(ob, lambda v: weights_for(v.co, cfg))
+    return [ob]
+
+
 # ------------------------------------------------------------------ 重ね着（ケープ・前掛け・広がる袖口・胴着）
 def build_capelet(cfg, surf):
     """肩をおおう短いケープ（首から肩の下まで、すそが少し広がる）＋金のふち"""
@@ -1381,7 +1678,7 @@ def build_capelet(cfg, surf):
     gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
     rows, seg = 9, 64
     verts, faces = [], []
-    z0, z1 = 1.445, 1.255
+    z0, z1 = 1.445, cfg.get('capelet_bottom', 1.255)
     ring_last = []
     for r in range(rows + 1):
         v = r / rows
@@ -1714,6 +2011,7 @@ def build_character(cfg, x_offset):
     parts = [body, build_cape(cfg), build_hands(cfg)] + build_face(cfg, surf) + build_beard(cfg, surf) + build_hair(cfg, surf) + build_robe(cfg)
     parts += build_tunic_skirt(cfg) + build_trims(cfg, surf)
     parts += build_capelet(cfg, surf) + build_tabard(cfg, surf) + build_bell_cuffs(cfg, surf) + build_corset(cfg, surf)
+    parts += build_scarf(cfg, surf) + build_bandolier(cfg, surf) + build_puff_sleeves(cfg, surf) + build_chest_bow(cfg, surf) + build_fur_mantle(cfg)
     # 鎧・エプロン・ベスト
     if cfg.get('armor'):
         steel = mat("ArmorSilver", (0.72, 0.74, 0.78), 0.38, 1.0)
@@ -1754,10 +2052,11 @@ def build_character(cfg, x_offset):
 
 SKIN_C = (1.0, 0.77, 0.63)
 CHARS = [
-    dict(name='Hero', build='male', tunic_flare=True, lacing=True, tunic_len=0.80, sleeves='short', gloves=True, hair='spiky',
-         cape=(0.78, 0.13, 0.12), sword=True, shield=(0.18, 0.32, 0.72), eye=(0.30, 0.18, 0.10),
-         colors=dict(skin=SKIN_C, top=(0.16, 0.38, 0.76), pants=(0.86, 0.82, 0.70), boot=(0.38, 0.23, 0.12),
-                     belt=(0.32, 0.19, 0.10), glove=(0.42, 0.27, 0.14), hair=(0.24, 0.15, 0.09))),
+    dict(name='Hero', build='male', eye_style='cool', tunic_flare=True, lacing=True, tunic_len=0.80, sleeves='long', gloves='fingerless',
+         hair='spiky', headband=(0.82, 0.12, 0.1), scarf=(0.8, 0.13, 0.1), bandolier=True, sword=True, shield=(0.16, 0.3, 0.68),
+         eye=(0.22, 0.32, 0.55), boot_h=0.36,
+         colors=dict(skin=SKIN_C, top=(0.13, 0.26, 0.62), under=(0.95, 0.93, 0.88), pants=(0.32, 0.25, 0.2), boot=(0.36, 0.22, 0.12),
+                     belt=(0.4, 0.24, 0.12), glove=(0.36, 0.22, 0.12), hair=(0.4, 0.24, 0.12))),
     dict(name='King', eyes='adult', tabard=(0.86, 0.68, 0.26), bell_cuffs=True, build='portly', robe=True, hem=True, sleeves='long', hair='short', beard='long', crown=True, fur=True,
          cape=(0.62, 0.06, 0.12), cape_len=0.12, staff='gold', eye=(0.25, 0.2, 0.15),
          colors=dict(skin=SKIN_C, top=(0.72, 0.12, 0.15), robe=(0.62, 0.08, 0.13), boot=(0.4, 0.25, 0.1), hair=(0.93, 0.93, 0.93),
@@ -1786,18 +2085,21 @@ CHARS = [
          colors=dict(skin=(0.98, 0.80, 0.70), top=(0.48, 0.38, 0.55), robe=(0.44, 0.34, 0.52), boot=(0.3, 0.2, 0.1),
                      hair=(0.9, 0.9, 0.9), beard=(0.95, 0.95, 0.95))),
     # ---- 仲間
-    dict(name='Milia', corset=(0.24, 0.12, 0.34), build='female', scale=0.93, head_scale=1.03, dress=True, sleeves='short', hair='long', staff='magic',
-         witch_hat=(0.28, 0.14, 0.45), cape=(0.32, 0.18, 0.5), cape_len=0.62, eye=(0.2, 0.6, 0.35),
-         colors=dict(skin=SKIN_C, top=(0.5, 0.3, 0.72), dress=(0.42, 0.22, 0.62), pants=(0.96, 0.92, 0.86), boot=(0.32, 0.18, 0.3),
-                     belt=(0.95, 0.75, 0.25), hair=(0.98, 0.52, 0.28), ribbon=(0.95, 0.75, 0.25))),
-    dict(name='Gald', eyes='adult', build='male', scale=1.1, head_scale=0.93, sleeves='long', gloves=True, hair='short', beard='short', armor=True,
-         axe=True, cape=(0.14, 0.32, 0.2), tunic_flare=True, tunic_len=0.8, eye=(0.25, 0.18, 0.1),
-         colors=dict(skin=(0.92, 0.72, 0.58), top=(0.38, 0.3, 0.24), pants=(0.3, 0.26, 0.22), boot=(0.26, 0.17, 0.1), belt=(0.25, 0.16, 0.08),
-                     glove=(0.35, 0.24, 0.14), hair=(0.55, 0.2, 0.08), beard=(0.5, 0.18, 0.08))),
-    dict(name='Serena', capelet=(0.94, 0.95, 0.99), tabard=(0.22, 0.4, 0.82), bell_cuffs=True, build='female', scale=0.96, head_scale=1.0, robe=True, sleeves='long', hair='long', staff='gold', circlet=True,
-         eye=(0.2, 0.35, 0.8),
-         colors=dict(skin=(1.0, 0.84, 0.74), top=(0.94, 0.94, 0.97), robe=(0.9, 0.92, 0.98), boot=(0.85, 0.8, 0.7),
-                     hair=(0.86, 0.88, 0.96), ribbon=(0.3, 0.5, 0.9), sash=(0.25, 0.45, 0.85))),
+    dict(name='Milia', eye_style='cute', puff=True, chest_bow=(1.0, 0.42, 0.6), bow_z=1.36, capelet=(0.98, 0.97, 0.95), capelet_bottom=1.36,
+         stockings=True, build='female', scale=0.92, head_scale=1.06, dress=True, sleeves='short', hair='twintails', staff='magic',
+         witch_hat=(0.3, 0.16, 0.5), cape=(0.34, 0.18, 0.55), cape_len=0.66, eye=(0.15, 0.62, 0.4), boot_h=0.3,
+         colors=dict(skin=SKIN_C, top=(0.52, 0.3, 0.78), dress=(0.46, 0.24, 0.7), pants=(0.96, 0.92, 0.86), boot=(0.34, 0.16, 0.36),
+                     belt=(0.95, 0.75, 0.25), hair=(1.0, 0.5, 0.25), ribbon=(1.0, 0.42, 0.6), stock=(0.46, 0.24, 0.7), stock2=(0.98, 0.96, 0.95))),
+    dict(name='Gald', eyes='adult', eye_style='cool', scar=True, fur_mantle=(0.42, 0.3, 0.2), build='male', scale=1.12, head_scale=0.92,
+         sleeves='long', gloves=True, hair='spiky', beard='short', armor=True, axe=True, cape=(0.5, 0.1, 0.08), tunic_flare=True, tunic_len=0.8,
+         eye=(0.3, 0.22, 0.12),
+         colors=dict(skin=(0.9, 0.68, 0.52), top=(0.32, 0.24, 0.2), pants=(0.26, 0.22, 0.2), boot=(0.24, 0.15, 0.09), belt=(0.25, 0.16, 0.08),
+                     glove=(0.32, 0.21, 0.12), hair=(0.62, 0.2, 0.08), beard=(0.55, 0.18, 0.08))),
+    dict(name='Serena', eye_style='cute', capelet=(0.96, 0.96, 0.99), tabard=(0.22, 0.4, 0.82), bell_cuffs=True, chest_bow=(0.25, 0.45, 0.9), bow_z=1.31,
+         braids=True, flower=(1.0, 0.75, 0.82), build='female', scale=0.95, head_scale=1.04, robe=True, sleeves='long', hair='long', staff='gold',
+         circlet=True, eye=(0.22, 0.42, 0.88),
+         colors=dict(skin=(1.0, 0.84, 0.74), top=(0.95, 0.95, 0.98), robe=(0.92, 0.93, 0.99), boot=(0.85, 0.8, 0.7),
+                     hair=(0.9, 0.9, 0.97), ribbon=(0.3, 0.5, 0.9), sash=(0.25, 0.45, 0.85))),
 ]
 
 # 既存の人型を削除（再実行用）
