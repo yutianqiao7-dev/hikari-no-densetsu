@@ -211,6 +211,7 @@ class Game {
     this.fx.update(dt);
     this.ambient(dt);
     if (this.mode === 'field' || this.mode === 'cutscene') this.hud.tick(f, this.sky);
+    this.updateSpeakers();
     this.renderer.r.getDrawingBufferSize(OUTLINE_RES.value);
     OUTLINE_PX.value = 1.6 * this.renderer.r.getPixelRatio();
     this.renderer.render(this.scene, this.camera, this.t);
@@ -842,6 +843,21 @@ class Game {
     this.mode = 'field';
     this.field.area = undefined;
     await this.ui.fadeTo(0, 700);
+  }
+
+  /** セリフの文字送り中は、話している人の口を動かす（名前で勇者・仲間・話しかけた人を探す） */
+  updateSpeakers() {
+    const f = this.field, s = this.state;
+    if (!f || !s) return;
+    const who = this.ui.typingWho;
+    f.hero.speaking = !!who && who === s.name;
+    const party = new Set([s.name]);
+    for (const { m, h } of f.partyFollowers()) {
+      const nm = memberName(s, m);
+      party.add(nm);
+      h.speaking = !!who && who === nm;
+    }
+    for (const n of f.npcs) n.h.speaking = !!who && n.talking && !party.has(who);
   }
 
   /** 背景（地形・建物・木・草）もキャラと同じ 2 段の陰影にする（ドラクエ8風） */

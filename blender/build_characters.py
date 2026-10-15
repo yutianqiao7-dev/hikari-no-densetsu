@@ -374,28 +374,47 @@ def build_face(cfg, surf):
         Hh *= 0.74
     cz = 1.596
     mb = CMB()
+    lash_mb, lash_closed = CMB(), CMB()
     for s_ in (-1, 1):
         cx = s_ * 0.040
-        objs.append(face.surface_patch(surf, P, cx, cz, W, Hh, s_, eye_m, f"{name}_Eye{'L' if s_ > 0 else 'R'}", COLL, lift=0.0014))
-        # 上まつ毛の線（目じりへ太く、はね上がる）
-        pts, rad = [], []
-        for k in range(11):
-            a = 0.06 + k / 10 * 0.94
-            x = cx + s_ * (a - 0.5) * W
-            z = cz + (face.lid_top(a, st) - 0.5) * Hh + 0.0012
-            pts.append(on(x, z, 0.0024))
-            rad.append((0.0007 + 0.0026 * math.sin(math.pi * (0.12 + a * 0.82)) ** 0.6 * (0.6 + 0.4 * a)) * (1.25 if st in ('cool', 'cute') else 1.0))
-        for ext, up in ((0.07, 0.04), (0.13, 0.1)):
-            a = 1 + ext
-            pts.append(on(cx + s_ * (a - 0.5) * W, cz + (face.lid_top(1.0, st) - 0.5 + up) * Hh, 0.0024))
-            rad.append(0.0016 if ext < 0.1 else 0.0006)
-        mb.tube(pts, rad, lash, seg=8, flat=0.55)
-        if st == 'cute':
-            # 目じりの長いまつ毛 2 本
-            for a0, up in ((0.82, 0.16), (0.93, 0.1)):
-                b0 = on(cx + s_ * (a0 - 0.5) * W, cz + (face.lid_top(a0, st) - 0.5) * Hh + 0.001, 0.0024)
-                b1 = on(cx + s_ * (a0 + 0.08 - 0.5) * W, cz + (face.lid_top(a0, st) - 0.5 + up) * Hh, 0.003)
-                mb.tube([b0, b1], [0.0011, 0.0003], lash, seg=6)
+        eob = face.surface_patch(surf, P, cx, cz, W, Hh, s_, eye_m, f"{name}_Eye{'L' if s_ > 0 else 'R'}", COLL, lift=0.0014)
+        closed = face.patch_coords(surf, P, cx, cz, W, Hh, s_, 0.0014, 16, 10,
+                                   lambda a, b: face.lid_bot(a, st) * 0.8 + face.lid_top(a, st) * 0.2 - 0.5 + (b - 0.5) * 0.03)
+        face.add_shape(eob, 'Blink', closed)
+        objs.append(eob)
+    for s_ in (-1, 1):
+        cx = s_ * 0.040
+        # 上まつ毛の線（目じりへ太く、はね上がる）は別のオブジェクト（まばたきで下へ）
+        for closed_ in (False, True):
+            lmb = lash_mb if not closed_ else lash_closed
+            pts, rad = [], []
+            for k in range(11):
+                a = 0.06 + k / 10 * 0.94
+                x = cx + s_ * (a - 0.5) * W
+                if closed_:
+                    z = cz + (face.lid_bot(a, st) * 0.8 + face.lid_top(a, st) * 0.2 - 0.5) * Hh - 0.0004
+                else:
+                    z = cz + (face.lid_top(a, st) - 0.5) * Hh + 0.0012
+                pts.append(on(x, z, 0.0024))
+                rad.append((0.0007 + 0.0026 * math.sin(math.pi * (0.12 + a * 0.82)) ** 0.6 * (0.6 + 0.4 * a)) * (1.25 if st in ('cool', 'cute') else 1.0))
+            for ext, up in ((0.07, 0.04), (0.13, 0.1)):
+                a = 1 + ext
+                base_z = (face.lid_bot(1.0, st) * 0.8 + face.lid_top(1.0, st) * 0.2) if closed_ else face.lid_top(1.0, st)
+                pts.append(on(cx + s_ * (a - 0.5) * W, cz + (base_z - 0.5 + up * (0.4 if closed_ else 1.0)) * Hh, 0.0024))
+                rad.append(0.0016 if ext < 0.1 else 0.0006)
+            lmb.tube(pts, rad, lash, seg=8, flat=0.55)
+            if st == 'cute':
+                for a0, up in ((0.82, 0.16), (0.93, 0.1)):
+                    if closed_:
+                        zb = cz + (face.lid_bot(a0, st) * 0.8 + face.lid_top(a0, st) * 0.2 - 0.5) * Hh
+                        b0 = on(cx + s_ * (a0 - 0.5) * W, zb, 0.0024)
+                        b1 = on(cx + s_ * (a0 + 0.08 - 0.5) * W, zb + up * Hh * 0.3, 0.003)
+                    else:
+                        b0 = on(cx + s_ * (a0 - 0.5) * W, cz + (face.lid_top(a0, st) - 0.5) * Hh + 0.001, 0.0024)
+                        b1 = on(cx + s_ * (a0 + 0.08 - 0.5) * W, cz + (face.lid_top(a0, st) - 0.5 + up) * Hh, 0.003)
+                    lmb.tube([b0, b1], [0.0011, 0.0003], lash, seg=6)
+    for s_ in (-1, 1):
+        cx = s_ * 0.040
         # 下まつ毛（目じり側だけ細く）
         pts = [on(cx + s_ * (a - 0.5) * W, cz + (face.lid_bot(a, st) - 0.5) * Hh - 0.0006, 0.0018) for a in (0.5, 0.65, 0.8, 0.92, 1.0)]
         mb.tube(pts, [0.0003, 0.0006, 0.0008, 0.0008, 0.0004], lash, seg=6, flat=0.6)
@@ -417,6 +436,34 @@ def build_face(cfg, surf):
         u = (k - 4) / 4
         pts.append(on(u * 0.0145, 1.547 + abs(u) ** 2 * 0.0032 - (1 - abs(u)) * 0.0004, 0.0008))
     mb.tube(pts, [0.0005, 0.0011, 0.0016, 0.0019, 0.002, 0.0019, 0.0016, 0.0011, 0.0005], mouth, seg=6, flat=0.55)
+    lob = lash_mb.build(name + "_Lashes", COLL)
+    face.add_shape(lob, 'Blink', [v.co.copy() for v in lash_closed.bm.verts])
+    lash_closed.bm.free()
+    objs.append(lob)
+    # 口の中（閉じているときは線になって隠れ、Talk で開く）
+    mouth_in = mat(name + "_MouthIn", (0.36, 0.07, 0.08), 0.6)
+    smile = lambda u: abs(u) ** 2 * 0.0032 - (1 - abs(u)) * 0.0004
+    mmb = CMB()
+    nu_, nv_ = 10, 3
+    verts_, faces_ = [], []
+    for j in range(nv_ + 1):
+        for i in range(nu_ + 1):
+            u = i / nu_ * 2 - 1
+            verts_.append(tuple(on(u * 0.0135, 1.547 + smile(u) - (j / nv_) * 0.0004, 0.0005)))
+    for j in range(nv_):
+        for i in range(nu_):
+            a_ = j * (nu_ + 1) + i
+            faces_.append((a_, a_ + nu_ + 1, a_ + nu_ + 2, a_ + 1))
+    mmb.poly(verts_, faces_, mouth_in, smooth=True)
+    mob = mmb.build(name + "_MouthIn", COLL)
+    talk = []
+    for j in range(nv_ + 1):
+        for i in range(nu_ + 1):
+            u = i / nu_ * 2 - 1
+            open_ = 0.012 * (1 - abs(u) ** 2) ** 0.8 * (j / nv_)
+            talk.append(on(u * 0.0135, 1.547 + smile(u) - 0.0006 - open_, 0.0005))
+    face.add_shape(mob, 'Talk', talk)
+    objs.append(mob)
     if cfg.get('scar'):
         pts = [on(-0.06 + k * 0.006, 1.6 - k * 0.012, 0.0008) for k in range(5)]
         mb.tube(pts, [0.0006, 0.0012, 0.0013, 0.0011, 0.0005], mat(name + "_Scar", tuple(c * 0.7 for c in skin_c), 0.6), seg=6, flat=0.5)
@@ -2166,7 +2213,7 @@ def build_character(cfg, x_offset):
 
 SKIN_C = (1.0, 0.77, 0.63)
 CHARS = [
-    dict(name='Hero', bracers=(0.4, 0.26, 0.14), boot_straps=True, shoulder_guard=(0.36, 0.22, 0.12), build='male', eye_style='cool', tunic_flare=True, lacing=True, tunic_len=0.80, sleeves='long', gloves='fingerless',
+    dict(name='Hero', scale=1.06, bracers=(0.4, 0.26, 0.14), boot_straps=True, shoulder_guard=(0.36, 0.22, 0.12), build='male', eye_style='cool', tunic_flare=True, lacing=True, tunic_len=0.80, sleeves='long', gloves='fingerless',
          hair='spiky', headband=(0.82, 0.12, 0.1), scarf=(0.8, 0.13, 0.1), bandolier=True, sword=True, shield=(0.16, 0.3, 0.68),
          eye=(0.22, 0.32, 0.55), boot_h=0.36,
          colors=dict(skin=SKIN_C, top=(0.13, 0.26, 0.62), under=(0.95, 0.93, 0.88), pants=(0.32, 0.25, 0.2), boot=(0.36, 0.22, 0.12),

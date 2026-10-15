@@ -145,6 +145,28 @@ def tex_mat(name, img, rough=0.25, blend=True):
     return m
 
 
+def patch_coords(surf, P, cx, cz, w, h, s, lift, nu, nv, zfun):
+    """surface_patch と同じ順番の頂点位置。zfun(a, b) が板の中の高さ（-0.5..0.5）を返す（まばたき・口の形用）"""
+    out = []
+    for j in range(nv + 1):
+        for i in range(nu + 1):
+            a, b = i / nu, j / nv
+            x, z = P(cx + s * (a - 0.5) * w, cz + zfun(a, b) * h)
+            p, n = surf.front(x, z)
+            out.append(p + n * lift)
+    return out
+
+
+def add_shape(ob, name, coords):
+    """形のキー（シェイプキー）を足す。coords は頂点と同じ順番"""
+    if ob.data.shape_keys is None:
+        ob.shape_key_add(name='Basis', from_mix=False)
+    k = ob.shape_key_add(name=name, from_mix=False)
+    for i, c in enumerate(coords):
+        k.data[i].co = c
+    return k
+
+
 def surface_patch(surf, P, cx, cz, w, h, s, m, name, coll, lift=0.0012, nu=16, nv=10):
     """顔の表面に沿った UV つきの板（cx, cz は頭のスケール前の座標）。s = 左右（+1 = キャラの左）"""
     bm = bmesh.new()

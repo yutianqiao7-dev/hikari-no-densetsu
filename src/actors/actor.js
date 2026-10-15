@@ -26,6 +26,36 @@ export class Humanoid {
     if (this.actions.Idle) this.actions.Idle.time = Math.random() * 2;
     this.setWeapon(false);
     if (['Staff', 'Axe', 'Spear'].some((k) => this.parts[k])) this.setupHold();
+    // まばたき・口の形（Blender の形のキー）
+    this.morphs = [];
+    this.root.traverse((o) => {
+      const d = o.morphTargetDictionary;
+      if (o.isMesh && d && !o.userData.isOutline) this.morphs.push({ o, blink: d.Blink, talk: d.Talk });
+    });
+    this.blinkT = 1 + Math.random() * 3;
+    this.blinkA = -1;
+    this.mouth = 0;
+    this.speaking = false;
+  }
+
+  /** まばたき（2〜5 秒おき、ときどき 2 回続けて）と、話しているあいだの口 */
+  updateFace(dt) {
+    if (!this.morphs.length) return;
+    let blink = 0;
+    if (this.blinkA >= 0) {
+      this.blinkA += dt;
+      const t = this.blinkA / 0.15;
+      blink = t < 1 ? Math.sin(t * Math.PI) : 0;
+      if (t >= 1) { this.blinkA = -1; this.blinkT = Math.random() < 0.2 ? 0.12 : 2 + Math.random() * 3; }
+    } else if ((this.blinkT -= dt) <= 0) this.blinkA = 0;
+    this.faceT = (this.faceT || 0) + dt;
+    const target = this.speaking ? 0.35 + 0.65 * Math.abs(Math.sin(this.faceT * 13) * Math.sin(this.faceT * 7.3 + 1)) : 0;
+    this.mouth += (target - this.mouth) * Math.min(1, dt * 18);
+    for (const m of this.morphs) {
+      const inf = m.o.morphTargetInfluences;
+      if (m.blink !== undefined) inf[m.blink] = blink;
+      if (m.talk !== undefined) inf[m.talk] = this.mouth;
+    }
   }
 
   /**
@@ -96,6 +126,7 @@ export class Humanoid {
     if (hb) hb.quaternion.copy(this.holdBase);
     this.mixer.update(dt);
     for (const [a, b] of this.outlinePairs) b.visible = a.visible;
+    this.updateFace(dt);
     if (hb) { this.holdBase.copy(hb.quaternion); hb.quaternion.multiply(this.holdQ); }
   }
 }

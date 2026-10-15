@@ -40,12 +40,13 @@ export class UI {
   typeLine(w, line, opts) {
     return new Promise((resolve) => {
       w.innerHTML = '';
+      this.typingWho = line.who || null;
       if (line.who) w.appendChild(el('div', 'speaker', line.who));
       const body = el('div');
       w.appendChild(body);
       const text = line.text;
       let i = 0, done = false, timer;
-      const finish = () => { clearInterval(timer); body.textContent = text; done = true; if (!opts.auto) w.appendChild(el('div', 'next', '▼')); };
+      const finish = () => { clearInterval(timer); body.textContent = text; done = true; this.typingWho = null; if (!opts.auto) w.appendChild(el('div', 'next', '▼')); };
       const m = {
         key: (k) => {
           if (k !== 'confirm' && k !== 'cancel') return;

@@ -228,7 +228,7 @@ export class ModelLibrary {
     for (const t of Object.values(this.templates)) this.upgradeMaterials(t);
     // 人型は顔の描いた部品を除いて輪郭線をつける（モンスターは複製したあとに）
     for (const [k, t] of Object.entries(this.templates)) {
-      if (!/^Mon_/.test(k)) addOutlines(t, /_(Face|Eye[LR]|Blush[LR])$/);
+      if (!/^Mon_/.test(k)) addOutlines(t, /_(Face|Eye[LR]|Blush[LR]|Lashes|MouthIn)$/);
     }
   }
 
