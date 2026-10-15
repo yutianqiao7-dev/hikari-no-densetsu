@@ -92,11 +92,12 @@ float toonStep(float x) {
 }
 vec3 toonCol(float x) {
   ${soft ? `// 肌：影は赤みのある色ではっきり
-  float k = smoothstep(0.1, 0.14, x);
-  return mix(vec3(0.62, 0.4, 0.36), vec3(1.0), k) * (0.9 + 0.1 * smoothstep(0.5, 0.56, x));` : 'return vec3(toonStep(x));'}
+  float k = smoothstep(0.22, 0.3, x);
+  return mix(vec3(0.72, 0.5, 0.45), vec3(1.0), k);` : 'return vec3(toonStep(x));'}
 }
 float toonNL(vec3 n, float dl) {
-  ${char ? 'return max(dot(n, uKeyDir), 0.0) * 0.75 + dl * 0.25;' : 'return dl;'}
+  ${soft ? `// 顔は奥側だけがうっすら暗くなるように（半分ランバート）
+  return (dot(n, uKeyDir) * 0.5 + 0.5) * 0.8 + dl * 0.2;` : (char ? 'return max(dot(n, uKeyDir), 0.0) * 0.75 + dl * 0.25;' : 'return dl;')}
 }`;
 
 // 縁の明るい線（リムライト）と、髪の天使の輪

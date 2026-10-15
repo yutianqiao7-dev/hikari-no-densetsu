@@ -133,7 +133,8 @@ def body_elems(cfg):
         head.append(E_cap((s * 0.063, -0.006, 1.563), (s * 0.016, -0.063, 1.526), 0.018 if not fem else 0.017))
         head.append(E_ell((s * 0.038, -0.046, 1.566), 0.027, 0.023, 0.025))
         head.append(E_ell((s * 0.092, 0.006, 1.595), 0.011, 0.021, 0.03))
-    el += [head_xf(e, hs) for e in head]
+    if cfg.get('old_head'):
+        el += [head_xf(e, hs) for e in head]       # 頭は head.py で一から作る（体には首まで）
     # 腕
     for s in (-1, 1):
         sd = 'L' if s > 0 else 'R'
@@ -913,11 +914,14 @@ def build_hair(cfg, surf):
         for i in range(28):
             th = math.radians(56 + i / 27 * 248) + rng.uniform(-0.04, 0.04)
             back = max(-math.cos(th), 0)
-            clump(th, 0.1, 2.2 + 0.1 * back, 0.038, ext=0.075 + 0.02 * back, lift=0.8, droop=-0.03, flat=0.65, split=False,
-                  rise=0.1 + 0.05 * back, twist=rng.uniform(-0.08, 0.08), tail_down=0.03)
+            hood_ = bool(cfg.get('hood'))
+            if hood_ and 40 < math.degrees(th) % 360 < 320 and back > 0.2:
+                continue          # フードの中に隠れる後ろの髪は作らない
+            clump(th, 0.1, 2.2 + 0.1 * back, 0.038, ext=(0.03 if hood_ else 0.075) + 0.02 * back, lift=0.3 if hood_ else 0.8,
+                  droop=-0.03, flat=0.65, split=False, rise=(0.0 if hood_ else 0.1 + 0.05 * back), twist=rng.uniform(-0.08, 0.08), tail_down=0.03)
         for i in range(10):
             th = math.radians(70 + i / 9 * 220)
-            clump(th, 0.08, 1.2, 0.04, ext=0.0, lift=0.0, flat=0.6, split=False, rise=0.12)
+            clump(th, 0.08, 1.2, 0.04, ext=0.0, lift=0.0, flat=0.6, split=False, rise=0.02 if cfg.get('hood') else 0.12)
     if style in ('spiky', 'short', 'long'):
         # 前髪
         nb = 13 if style != 'short' else 10
@@ -1157,6 +1161,12 @@ def build_cape(cfg):
     mb = CMB()
     mb.poly(verts, faces, cm, smooth=True)
     gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+    if cfg.get('cape_trim'):
+        tm = mat(cfg['name'] + "_CapeTrim", cfg['cape_trim'], 0.7, double=True)
+        V_ = lambda r_, c_: Vector(verts[r_ * (cols + 1) + c_]) + Vector((0, 0.004, 0))
+        for c_ in (0, cols):
+            mb.tube([V_(r_, c_) for r_ in range(rows + 1)], [0.011] * (rows + 1), tm, seg=8, flat=0.35)
+        mb.tube([V_(rows, c_) for c_ in range(cols + 1)], [0.014] * (cols + 1), tm, seg=8, flat=0.35)
     for s in (-1, 1):
         mb.add('sphere', gold, loc=(s * 0.11, -0.04, 1.40), scale=(0.022, 0.012, 0.022))
     ob = mb.build(cfg['name'] + "_Cape", COLL)
@@ -1595,7 +1605,23 @@ def build_gear(cfg, surf):
         mb = CMB()
         kind = cfg['staff']
         top = hpalm + Vector((0, 0, 0.98))
-        if kind == 'gold':
+        if kind in ('orb', 'crystal'):
+            # 曲がった木の杖：上で枝が分かれて、玉（または水晶）を抱える
+            pts = [hpalm + Vector((0.004 * math.sin(k * 1.3), 0.004 * math.cos(k * 0.9), -0.5 + k * 0.1)) for k in range(15)]
+            mb.tube(pts, [0.016 - 0.003 * (k / 14) for k in range(15)], wood, seg=10)
+            topc = hpalm + Vector((0, 0, 1.0))
+            for sx, sy in ((1, 0), (-0.5, 0.86), (-0.5, -0.86)):
+                mb.tube([topc + Vector((0, 0, -0.06)), topc + Vector((sx * 0.035, sy * 0.035, 0.0)), topc + Vector((sx * 0.03, sy * 0.03, 0.06)),
+                         topc + Vector((sx * 0.012, sy * 0.012, 0.09))], [0.012, 0.01, 0.007, 0.003], wood, seg=8)
+            if kind == 'orb':
+                om = mat("HealOrb", (0.55, 1.0, 0.6), 0.1, emit=(0.35, 1.0, 0.45), emit_strength=2.5)
+                mb.add('sphere', om, loc=topc + Vector((0, 0, 0.045)), scale=(0.048, 0.048, 0.048), seg=24, rings=16)
+                mb.add('cube', mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0), loc=topc + Vector((0, -0.046, 0.045)), scale=(0.008, 0.004, 0.03))
+                mb.add('cube', mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0), loc=topc + Vector((0, -0.046, 0.045)), scale=(0.03, 0.004, 0.008))
+            else:
+                cm = mat("IceCrystal", (0.5, 0.8, 1.0), 0.05, emit=(0.3, 0.6, 1.0), emit_strength=2.0)
+                mb.add('ico', cm, loc=topc + Vector((0, 0, 0.08)), sub=0, scale=(0.036, 0.036, 0.095))
+        elif kind == 'gold':
             mb.add('cyl', gold, loc=hpalm + Vector((0, 0, 0.25)), r1=0.012, r2=0.015, depth=1.45, seg=12)
             for dz in (-0.5, -0.1, 0.55):
                 mb.add('cyl', gold, loc=hpalm + Vector((0, 0, dz)), r1=0.02, r2=0.02, depth=0.025, seg=14)
@@ -2374,6 +2400,259 @@ def build_tiara(cfg):
     return [ob]
 
 
+def build_overskirt(cfg, surf):
+    """前の開いた上掛けのすそ（白いスカートの上に重ねる）＋ふちの帯と金の十字"""
+    o = cfg.get('overskirt')
+    if not o:
+        return []
+    col, trim_c, gap = o
+    m = mat(cfg['name'] + "_Overskirt", col, 0.75)
+    lining = mat(cfg['name'] + "_OverLining", tuple(c * 0.55 for c in col), 0.85)
+    tm = mat(cfg['name'] + "_OverTrim", trim_c, 0.6)
+    gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+    rows, seg = 14, 56
+    a0, a1 = math.radians(gap), math.radians(360 - gap)
+    verts, faces, grid = [], [], []
+    for r in range(rows + 1):
+        v = r / rows
+        row = []
+        for k in range(seg + 1):
+            u = k / seg
+            ang = a0 + (a1 - a0) * u
+            z = 0.99 + (0.05 - 0.99) * v
+            # 開きは上ほど狭い（腰のあたりで合わさる）
+            if r == 0:
+                ang = math.radians(gap * 0.25) + (math.radians(360 - gap * 0.25) - math.radians(gap * 0.25)) * u
+            elif v < 0.25:
+                g = gap * (0.25 + 0.75 * v / 0.25)
+                ang = math.radians(g) + (math.radians(360 - g) - math.radians(g)) * u
+            rr = 0.172 + 0.14 * v ** 1.0
+            rr *= 1 + 0.03 * math.sin(ang * 10) * v
+            row.append(len(verts))
+            verts.append((math.sin(ang) * rr, 0.012 - math.cos(ang) * rr * 0.9, z))
+        grid.append(row)
+    for r in range(rows):
+        for k in range(seg):
+            faces.append((grid[r][k], grid[r + 1][k], grid[r + 1][k + 1], grid[r][k + 1]))
+    mb = CMB()
+    mb.poly(verts, faces, m, smooth=True)
+    mb.poly([(x * 0.985, y * 0.985, z) for (x, y, z) in verts], [tuple(reversed(f)) for f in faces], lining, smooth=True)
+    V_ = lambda r_, k_: Vector(verts[grid[r_][k_]])
+    # すそと前のふちに太い帯
+    hem = [V_(rows, k) + Vector((0, 0, 0.022)) for k in range(seg + 1)]
+    mb.tube(hem, [0.022] * len(hem), tm, seg=8, flat=0.25)
+    for k in (0, seg):
+        mb.tube([V_(r, k) for r in range(rows + 1)], [0.012] * (rows + 1), tm, seg=8, flat=0.3)
+    # 帯の上の金の十字
+    for k in range(0, seg + 1, 4):
+        q = V_(rows, k) + Vector((0, 0, 0.024))
+        ang = math.atan2(q.x, -(q.y - 0.012))
+        nn = Vector((math.sin(ang), -math.cos(ang), 0))
+        e = basis_euler(nn)
+        mb.add('cube', gold, loc=q + nn * 0.006, rot=e, scale=(0.006, 0.003, 0.022))
+        mb.add('cube', gold, loc=q + nn * 0.006, rot=e, scale=(0.02, 0.003, 0.006))
+    ob = mb.build(cfg['name'] + "_Overskirt", COLL)
+    zt = 0.99
+
+    def wf(v):
+        u = max(0.0, min(1.0, (zt - v.co.z) / (zt - 0.05)))
+        wl = 0.45 * u
+        if abs(v.co.x) < 0.04:
+            return {'hips': 1 - wl, 'thigh.L': wl / 2, 'thigh.R': wl / 2}
+        return {'hips': 1 - wl, ('thigh.L' if v.co.x > 0 else 'thigh.R'): wl}
+    assign_vgroups(ob, wf)
+    return [ob]
+
+
+def build_hood(cfg):
+    """かぶったフード（顔の前は開く）＋ふちの帯"""
+    o = cfg.get('hood')
+    if not o:
+        return []
+    col, trim_c = o
+    hs = cfg.get('head_scale', 0.98)
+    m = mat(cfg['name'] + "_Hood", col, 0.8)
+    lining = mat(cfg['name'] + "_HoodLining", tuple(c * 0.5 for c in col), 0.85)
+    tm = mat(cfg['name'] + "_HoodTrim", trim_c, 0.6)
+    C = HEAD_PIVOT + (Vector((0, 0.012, 1.628)) - HEAD_PIVOT) * hs
+    def pt(az, ph):
+        # az: 0 = 前, ph: 0 = 頂点。下へ行くほど広がって肩にかかる
+        k = 1.0 + 0.55 * max(0.0, ph - 1.5) ** 1.3 + 0.03
+        rx, ry, rz = 0.13 * hs * k, 0.138 * hs * k, 0.138 * hs
+        d = Vector((math.sin(ph) * math.sin(az) * rx, -math.sin(ph) * math.cos(az) * ry, math.cos(ph) * rz))
+        q = C + d
+        if ph > 1.6:
+            q.z = C.z + math.cos(1.6) * rz - (ph - 1.6) * 0.2
+        q.y += 0.02 * (1 - math.cos(az)) * 0.5 * max(0.0, ph - 1.0)
+        return q
+    naz, nph = 48, 24
+    face_az = math.radians(58)
+    def in_open(az, ph):
+        return abs(az) < face_az * (1.0 - 0.15 * max(0.0, ph - 1.6)) and 0.62 < ph
+    verts, faces, idx = [], [], {}
+    PH = 2.65
+    phs = [i / nph * PH for i in range(nph + 1)]
+    azs = [-math.pi + j / naz * math.tau for j in range(naz + 1)]
+    for i, ph in enumerate(phs):
+        for j, az in enumerate(azs):
+            idx[(i, j)] = len(verts)
+            verts.append(tuple(pt(az, ph)))
+    for i in range(nph):
+        for j in range(naz):
+            az = (azs[j] + azs[j + 1]) / 2
+            ph = (phs[i] + phs[i + 1]) / 2
+            if in_open(az, ph):
+                continue
+            faces.append((idx[(i, j)], idx[(i + 1, j)], idx[(i + 1, j + 1)], idx[(i, j + 1)]))
+    mb = CMB()
+    mb.poly(verts, faces, m, smooth=True)
+    mb.poly([tuple(C + (Vector(v) - C) * 0.97) for v in verts], [tuple(reversed(f)) for f in faces], lining, smooth=True)
+    # 顔のまわりのふち（開口の境目）
+    edge = []
+    for t in range(41):
+        u = t / 40
+        if u < 0.25:
+            az, ph = -face_az + (2 * face_az) * (u / 0.25), 0.62
+        elif u < 0.5:
+            az, ph = face_az, 0.62 + (PH - 0.62) * ((u - 0.25) / 0.25)
+        elif u < 0.75:
+            az, ph = face_az - 2 * face_az * ((u - 0.5) / 0.25), PH
+        else:
+            az, ph = -face_az, PH - (PH - 0.62) * ((u - 0.75) / 0.25)
+        if 0.5 <= u < 0.75:
+            continue
+        edge.append(pt(az * (1.0 - 0.15 * max(0.0, ph - 1.6)), ph))
+    mb.tube(edge, [0.011] * len(edge), tm, seg=8, flat=0.4)
+    hem = [pt(azs[j], PH) for j in range(naz + 1) if not in_open(azs[j], PH - 0.01)]
+    if len(hem) > 3:
+        mb.tube(hem, [0.011] * len(hem), tm, seg=8, flat=0.4)
+    ob = mb.build(cfg['name'] + "_Hood", COLL)
+
+    def wf(v):
+        z = v.co.z
+        w = smoothstep(1.4, 1.55, z)
+        return {'head': w, 'chest': 1 - w} if w < 0.99 else {'head': 1.0}
+    assign_vgroups(ob, wf)
+    return [ob]
+
+
+def build_belt_items(cfg, surf):
+    """ベルトに下げた小物入れ・薬びん"""
+    o = cfg.get('belt_items')
+    if not o:
+        return []
+    lm = cmat(cfg, 'belt')
+    gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+    glass = mat("PotionGlass", (0.35, 0.9, 0.45), 0.1, emit=(0.2, 0.9, 0.35), emit_strength=1.2)
+    cork = mat("Cork", (0.62, 0.45, 0.28), 0.9)
+    mb = CMB()
+    for kind, x in o:
+        q, nn = surf.front(x, 0.93)
+        e = basis_euler(nn)
+        if kind == 'pouch':
+            c = q + nn * 0.032
+            mb.add('cube', lm, loc=c + Vector((0, 0, -0.03)), rot=e, scale=(0.06, 0.04, 0.065), bevel=0.008)
+            mb.add('cube', lm, loc=c + nn * 0.004 + Vector((0, 0, -0.004)), rot=e, scale=(0.064, 0.045, 0.026), bevel=0.006)
+            mb.add('sphere', gold, loc=c + nn * 0.026 + Vector((0, 0, -0.012)), scale=(0.006, 0.006, 0.006), seg=8, rings=5)
+        else:
+            c = q + nn * 0.02
+            mb.add('cyl', glass, loc=c + Vector((0, 0, -0.035)), r1=0.011, r2=0.011, depth=0.055, seg=12)
+            mb.add('cyl', cork, loc=c + Vector((0, 0, 0.0)), r1=0.007, r2=0.008, depth=0.014, seg=10)
+            mb.add('cube', lm, loc=c + Vector((0, 0, -0.03)), rot=e, scale=(0.028, 0.03, 0.012))
+    ob = mb.build(cfg['name'] + "_BeltItems", COLL)
+    rig_rigid(ob, 'hips')
+    return [ob]
+
+
+def build_alice_band(cfg):
+    col = cfg.get('alice_band')
+    if not col:
+        return []
+    hs = cfg.get('head_scale', 0.98)
+    m = mat(cfg['name'] + "_AliceBand", col, 0.6)
+    C = HEAD_PIVOT + (Vector((0, 0.012, 1.628)) - HEAD_PIVOT) * hs
+    pts = []
+    for k in range(25):
+        t = k / 24
+        a = math.radians(-85 + 170 * t)
+        # 耳の上から、おでこの少し後ろを通って反対の耳へ
+        d = Vector((math.sin(a) * 0.112, -0.03, math.cos(a) * 0.125))
+        pts.append(C + d * hs * 1.02)
+    mb = CMB()
+    mb.tube(pts, [0.012 * hs] * len(pts), m, seg=10, flat=0.3)
+    ob = mb.build(cfg['name'] + "_AliceBand", COLL)
+    rig_rigid(ob, 'head')
+    return [ob]
+
+
+def build_hat_on_back(cfg):
+    """背中にかけた とんがり帽子"""
+    col = cfg.get('hat_back')
+    if not col:
+        return []
+    hm = mat(cfg['name'] + "_BackHat", col, 0.8)
+    tm = mat(cfg['name'] + "_HoodTrim", cfg['hood'][1] if cfg.get('hood') else (0.2, 0.5, 0.35), 0.6)
+    mb = CMB()
+    c = Vector((0.05, 0.19, 1.24))
+    up = Vector((0.25, 0.35, 1)).normalized()
+    ax = up.cross(Vector((0, 1, 0))).normalized()
+    pts = [c + up * t * 0.3 + ax * (0.08 * t ** 2) for t in (0, 0.25, 0.5, 0.75, 1.0)]
+    mb.tube(pts, [0.09, 0.07, 0.05, 0.028, 0.004], hm, seg=16)
+    ring = [c + (ax * math.cos(a) + up.cross(ax) * math.sin(a)) * 0.17 for a in [k / 32 * math.tau for k in range(33)]]
+    mb.tube(ring, [0.02] * 33, hm, seg=8, flat=0.2)
+    ring2 = [c + up * 0.02 + (ax * math.cos(a) + up.cross(ax) * math.sin(a)) * 0.092 for a in [k / 32 * math.tau for k in range(33)]]
+    mb.tube(ring2, [0.012] * 33, tm, seg=8, flat=0.6)
+    gem = mat("Topaz", (1.0, 0.6, 0.6), 0.1, emit=(1.0, 0.4, 0.5), emit_strength=0.8)
+    mb.add('ico', gem, loc=pts[-1] + Vector((0, 0.01, -0.05)), r=0.014, sub=1, scale=(0.7, 0.7, 1.4))
+    ob = mb.build(cfg['name'] + "_BackHat", COLL)
+    rig_rigid(ob, 'chest')
+    return [ob]
+
+
+def build_trinkets(cfg, surf):
+    """耳飾り・胸の宝石・袖口の帯と十字"""
+    out = []
+    mb = CMB()
+    any_ = False
+    hs = cfg.get('head_scale', 0.98)
+    if cfg.get('earrings'):
+        gm = mat(cfg['name'] + "_Earring", cfg['earrings'], 0.1)
+        for s_ in (-1, 1):
+            e = HEAD_PIVOT + (Vector((s_ * 0.094, 0.004, 1.565)) - HEAD_PIVOT) * hs
+            mb.add('sphere', mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0), loc=e, scale=(0.004, 0.004, 0.004), seg=8, rings=5)
+            mb.add('ico', gm, loc=e + Vector((0, 0, -0.016)), r=0.008, sub=1, scale=(0.8, 0.8, 1.4))
+        ob = mb.build(cfg['name'] + "_Earrings", COLL)
+        rig_rigid(ob, 'head')
+        out.append(ob)
+        mb = CMB()
+    if cfg.get('brooch'):
+        q, nn = surf.front(0, 1.39)
+        bm_ = mat(cfg['name'] + "_Brooch", cfg['brooch'], 0.08)
+        mb.add('ico', bm_, loc=q + nn * 0.02, r=0.016, sub=1, scale=(0.8, 0.5, 1.2))
+        mb.add('sphere', mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0), loc=q + nn * 0.012, scale=(0.02, 0.006, 0.024), seg=12, rings=8)
+        any_ = True
+    if cfg.get('cuffs'):
+        cm = mat(cfg['name'] + "_Cuff", cfg['cuffs'], 0.6)
+        gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+        for sd in ('L', 'R'):
+            fa = BMAP[f'forearm.{sd}']
+            r0, r1 = limb_loft(mb, surf, fa[1], fa[2], 0.62, 0.92, 0.012, cm, flare=0.012)
+            mb.tube(r1 + [r1[0]], [0.004] * (len(r1) + 1), gold, seg=6)
+            a, b = Vector(fa[1]), Vector(fa[2])
+            c = a.lerp(b, 0.77)
+            hit, nn = surf.ray(c, Vector((0, -1, 0)), 0.2)
+            if hit is not None:
+                e = basis_euler(nn)
+                mb.add('cube', gold, loc=hit + nn * 0.016, rot=e, scale=(0.006, 0.003, 0.022))
+                mb.add('cube', gold, loc=hit + nn * 0.016, rot=e, scale=(0.02, 0.003, 0.006))
+        any_ = True
+    if any_:
+        ob = mb.build(cfg['name'] + "_Trinkets", COLL)
+        assign_vgroups(ob, lambda v: weights_for(v.co, cfg))
+        out.append(ob)
+    return out
+
+
 # ------------------------------------------------------------------ 武器の部品
 def loft(mb, sections, m, cap=True, smooth=False):
     """同じ点数の断面（Vector のリスト）を順につないだ立体"""
@@ -2498,13 +2777,28 @@ def build_character(cfg, x_offset):
                 region_of.setdefault(v.index, kind_)
     assign_vgroups(body, lambda v: weights_for(v.co, cfg, region_of.get(v.index)))
     surf = Surface(me)
-    parts = [body, build_cape(cfg), build_hands(cfg)] + build_face(cfg, surf) + build_beard(cfg, surf) + build_hair(cfg, surf) + build_robe(cfg)
+    # 頭（一から作る顔）
+    import head as headmod
+    importlib.reload(headmod)
+
+    def rig_head(o, center, hs_):
+        def wf(v):
+            lz = (v.co.z - center.z) / hs_
+            w = smoothstep(-0.2, -0.125, lz)
+            return {'head': w, 'neck': 1 - w} if w < 0.999 else {'head': 1.0}
+        assign_vgroups(o, wf)
+    hob, eob, hme = headmod.build_head(cfg, name, COLL, HEAD_PIVOT, rig_head)
+    hob.data.materials.append(cmat(cfg, 'skin'))
+    eob.data.materials.append(cmat(cfg, 'skin'))
+    hsurf = Surface(hme)
+    parts = [body, hob, eob, build_cape(cfg), build_hands(cfg)] + build_face(cfg, hsurf) + build_beard(cfg, hsurf) + build_hair(cfg, surf) + build_robe(cfg)
     parts += build_tunic_skirt(cfg) + build_trims(cfg, surf)
     parts += build_capelet(cfg, surf) + build_tabard(cfg, surf) + build_bell_cuffs(cfg, surf) + build_corset(cfg, surf)
     parts += build_scarf(cfg, surf) + build_bandolier(cfg, surf) + build_puff_sleeves(cfg, surf) + build_chest_bow(cfg, surf) + build_fur_mantle(cfg)
     parts += build_accessories(cfg, surf, body)
     parts += build_jacket(cfg, surf, body) + build_knee_guards(cfg, surf) + build_back_bow(cfg, surf) + build_cute_bits(cfg, surf)
     parts += build_horns(cfg) + build_tiara(cfg)
+    parts += build_overskirt(cfg, surf) + build_hood(cfg) + build_belt_items(cfg, surf) + build_alice_band(cfg) + build_hat_on_back(cfg) + build_trinkets(cfg, surf)
     # 鎧・エプロン・ベスト
     if cfg.get('armor'):
         steel = mat("ArmorSilver", (0.72, 0.74, 0.78), 0.38, 1.0)
@@ -2579,22 +2873,24 @@ CHARS = [
          colors=dict(skin=(0.98, 0.80, 0.70), top=(0.48, 0.38, 0.55), robe=(0.44, 0.34, 0.52), boot=(0.3, 0.2, 0.1),
                      hair=(0.9, 0.9, 0.9), beard=(0.95, 0.95, 0.95))),
     # ---- 仲間
-    dict(name='Milia', side_locks=True, back_bow=(1.0, 0.42, 0.6), sleeve_bows=(1.0, 0.42, 0.6),
-         pompoms=(1.0, 0.98, 0.96), boot_straps=True, eye_style='cute', puff=True, chest_bow=(1.0, 0.42, 0.6), bow_z=1.36, capelet=(0.98, 0.97, 0.95), capelet_bottom=1.36,
-         stockings=True, build='female', scale=0.92, head_scale=1.12, dress=True, sleeves='short', hair='bob', staff='magic',
-         witch_hat=(0.3, 0.16, 0.5), eye=(0.15, 0.62, 0.4), boot_h=0.3,
-         colors=dict(skin=SKIN_C, top=(0.52, 0.3, 0.78), dress=(0.46, 0.24, 0.7), pants=(0.96, 0.92, 0.86), boot=(0.34, 0.16, 0.36),
-                     belt=(0.95, 0.75, 0.25), hair=(1.0, 0.5, 0.25), ribbon=(1.0, 0.42, 0.6), stock=(0.46, 0.24, 0.7), stock2=(0.98, 0.96, 0.95))),
+    dict(name='Milia', hood=((0.42, 0.22, 0.6), (0.16, 0.42, 0.34)), hat_back=(0.42, 0.22, 0.6), earrings=(0.4, 0.8, 1.0), brooch=(0.3, 0.6, 1.0),
+         belt_items=(('pouch', -0.1), ('pouch', 0.1)), capelet=(0.42, 0.22, 0.6), capelet_bottom=1.3,
+         cape=(0.4, 0.21, 0.58), cape_len=0.16, cape_trim=(0.16, 0.42, 0.34), bell_cuffs=True,
+         tabard=(0.18, 0.44, 0.36), build='female', scale=0.94, head_scale=1.05, eye_style='fem', robe=True, sleeves='long',
+         gloves='fingerless', hair='bob', staff='crystal', eye=(0.2, 0.42, 0.75), boot_h=0.45,
+         colors=dict(skin=SKIN_C, top=(0.45, 0.24, 0.64), robe=(0.44, 0.23, 0.62), pants=(0.16, 0.42, 0.34), boot=(0.48, 0.3, 0.16),
+                     belt=(0.45, 0.28, 0.14), glove=(0.4, 0.22, 0.58), hair=(0.95, 0.45, 0.18), sash=(0.16, 0.42, 0.34))),
     dict(name='Gald', pauldron_horns=True, bracers=(0.72, 0.74, 0.78), boot_straps=True, eyes='adult', eye_style='cool', scar=True, fur_mantle=(0.42, 0.3, 0.2), build='male', scale=1.12, head_scale=0.92,
          sleeves='long', gloves=True, hair='spiky', beard='short', armor=True, axe=True, cape=(0.5, 0.1, 0.08), tunic_flare=True, tunic_len=0.8,
          eye=(0.3, 0.22, 0.12),
          colors=dict(skin=(0.9, 0.68, 0.52), top=(0.32, 0.24, 0.2), pants=(0.26, 0.22, 0.2), boot=(0.24, 0.15, 0.09), belt=(0.25, 0.16, 0.08),
                      glove=(0.32, 0.21, 0.12), hair=(0.62, 0.2, 0.08), beard=(0.55, 0.18, 0.08))),
-    dict(name='Serena', side_locks=True, tiara=True, back_bow=(0.25, 0.45, 0.9), back_bow_z=1.02, pendant=True, eye_style='cute', capelet=(0.96, 0.96, 0.99), tabard=(0.22, 0.4, 0.82), bell_cuffs=True, chest_bow=(0.25, 0.45, 0.9), bow_z=1.31,
-         braids=True, flower=(1.0, 0.75, 0.82), build='female', scale=0.95, head_scale=1.09, robe=True, sleeves='long', hair='long', staff='gold',
-         circlet=True, eye=(0.22, 0.42, 0.88),
-         colors=dict(skin=(1.0, 0.84, 0.74), top=(0.95, 0.95, 0.98), robe=(0.92, 0.93, 0.99), boot=(0.85, 0.8, 0.7),
-                     hair=(0.9, 0.9, 0.97), ribbon=(0.3, 0.5, 0.9), sash=(0.25, 0.45, 0.85))),
+    dict(name='Serena', alice_band=(0.18, 0.32, 0.72), overskirt=((0.15, 0.3, 0.68), (0.32, 0.5, 0.86), 30), cuffs=(0.18, 0.34, 0.74),
+         tabard=(0.96, 0.96, 0.98), bandolier=True, belt_items=(('vial', -0.1), ('vial', -0.065), ('pouch', 0.09)),
+         build='female', scale=0.95, head_scale=1.05, eye_style='fem', robe=True, sleeves='long', hair='long', staff='orb',
+         eye=(0.38, 0.22, 0.12), boot_h=0.42,
+         colors=dict(skin=(1.0, 0.8, 0.68), top=(0.15, 0.3, 0.68), under=(0.97, 0.97, 0.98), robe=(0.97, 0.97, 0.98), boot=(0.14, 0.26, 0.58),
+                     belt=(0.3, 0.33, 0.4), hair=(0.32, 0.2, 0.12), sash=(0.3, 0.33, 0.4))),
 ]
 
 # 既存の人型を削除（再実行用）
