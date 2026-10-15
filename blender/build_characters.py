@@ -122,12 +122,13 @@ def body_elems(cfg):
     # 頭
     head = [
         E_ell((0, 0.010, 1.625), 0.094, 0.104, 0.108),
-        E_ell((0, -0.026, 1.565), 0.061, 0.066, 0.056),
-        E_ell((0, -0.062, 1.533), 0.03, 0.024, 0.022),
-        E_ell((0, -0.096, 1.583), 0.0075, 0.011, 0.013),
+        E_ell((0, -0.024, 1.566), 0.056, 0.064, 0.056),
+        E_ell((0, -0.064, 1.529), 0.027, 0.024, 0.021),
+        E_ell((0, -0.097, 1.581), 0.0095, 0.012, 0.0145),
+        E_cap((0, -0.088, 1.612), (0, -0.097, 1.586), 0.0055),
     ]
     for s in (-1, 1):
-        head.append(E_ell((s * 0.042, -0.06, 1.574), 0.024, 0.018, 0.022))
+        head.append(E_ell((s * 0.041, -0.058, 1.576), 0.021, 0.017, 0.02))
         head.append(E_ell((s * 0.092, 0.006, 1.595), 0.011, 0.021, 0.03))
     el += [head_xf(e, hs) for e in head]
     # 腕
@@ -328,66 +329,87 @@ def rig_rigid(ob, bone):
 # ------------------------------------------------------------------ 表面スナップ
 # ------------------------------------------------------------------ 顔
 def build_face(cfg, surf):
+    """描いた目（face.py）＋まつ毛の線・二重・眉・口・ほお紅"""
+    import face
+    importlib.reload(face)
     hs = cfg.get('head_scale', 1.12)
     fem = cfg.get('build') == 'female'
+    name = cfg['name']
 
     def P(x, z):
         q = HEAD_PIVOT + (Vector((x, 0, z)) - HEAD_PIVOT) * hs
         return q.x, q.z
 
+    def on(x, z, lift):
+        px, pz = P(x, z)
+        q, nn = surf.front(px, pz)
+        return q + nn * lift
+
+    hair_c = cfg['colors'].get('hair', (0.3, 0.3, 0.3))
+    skin_c = cfg['colors'].get('skin', SKIN_C)
+    lash = mat(name + "_Lash", tuple(c * 0.25 for c in hair_c) if sum(hair_c) < 1.6 else (0.12, 0.09, 0.08), 0.6)
+    crease_m = mat(name + "_Crease", tuple(c * 0.72 for c in skin_c), 0.7)
+    brow = mat(name + "_Brow", tuple(c * 0.7 for c in hair_c), 0.7)
+    mouth = mat(name + "_Mouth", (0.62, 0.3, 0.28), 0.5)
+    eye_img = face.eye_image(name + "_EyeImg", cfg.get('eye', (0.25, 0.15, 0.08)), fem)
+    eye_m = face.tex_mat(name + "_EyeTex", eye_img, 0.12)
+    objs = []
+    W = 0.046 if fem else 0.043
+    Hh = 0.044 if fem else 0.039
+    if cfg.get('eyes') == 'adult':        # 大人の男性は少し細い目
+        W *= 0.95
+        Hh *= 0.74
+    cz = 1.596
     mb = CMB()
-    white = mat("EyeWhite", (1.0, 1.0, 1.0), 0.25)
-    iris = mat(cfg['name'] + "_Iris", cfg.get('eye', (0.25, 0.15, 0.08)), 0.15)
-    pupil = mat("Pupil", (0.02, 0.02, 0.03), 0.1)
-    lash = mat("Lash", (0.06, 0.04, 0.04), 0.6)
-    brow = cmat(cfg, 'hair') if cfg['colors'].get('hair') else mat("Brow", (0.3, 0.3, 0.3))
-    mouth = mat("Mouth", (0.55, 0.22, 0.22), 0.5)
-    ew, eh = (0.019, 0.027) if fem else (0.018, 0.023)
-    for s in (-1, 1):
-        cx, cz = P(s * 0.039, 1.597)
-        p, n = surf.front(cx, cz)
-        n = (n + Vector((0, -1.4, 0))).normalized()
-        e = basis_euler(n)
-        mb.add('sphere', white, loc=p - n * 0.0035, rot=e, scale=(ew * hs, 0.006, eh * hs), seg=20, rings=12)
-        mb.add('sphere', iris, loc=p - n * 0.0015 + Vector((-s * 0.002, 0, -0.002)), rot=e, scale=(ew * 0.72 * hs, 0.005, eh * 0.8 * hs), seg=20, rings=12)
-        mb.add('sphere', pupil, loc=p - n * 0.0005 + Vector((-s * 0.002, 0, -0.002)), rot=e, scale=(ew * 0.34 * hs, 0.0045, eh * 0.4 * hs), seg=14, rings=8)
-        mb.add('sphere', white, loc=p + n * 0.0012 + Vector((s * 0.004, 0, 0.007)), rot=e, scale=(0.0032, 0.0018, 0.004), seg=10, rings=6)
-        # 上まつげ
+    for s_ in (-1, 1):
+        cx = s_ * 0.040
+        objs.append(face.surface_patch(surf, P, cx, cz, W, Hh, s_, eye_m, f"{name}_Eye{'L' if s_ > 0 else 'R'}", COLL, lift=0.0014))
+        # 上まつ毛の線（目じりへ太く、はね上がる）
         pts, rad = [], []
-        for k in range(7):
-            a = math.radians(170 - k * 23.3)
-            lx = cx + math.cos(a) * ew * hs * 1.05
-            lz = cz + math.sin(a) * eh * hs * 1.0
-            q, nn = surf.front(lx, lz)
-            pts.append(q + nn * 0.0012)
-            rad.append(0.0028 if not fem else 0.0034)
-        if fem:
-            q, nn = surf.front(cx + s * ew * hs * 1.35, cz + eh * hs * 0.45)
-            if s > 0:
-                pts.append(q + nn * 0.002)
-                rad.append(0.0015)
-            else:
-                pts.insert(0, q + nn * 0.002)
-                rad.insert(0, 0.0015)
-        mb.tube(pts, rad, lash, seg=6)
-        # 眉
+        for k in range(11):
+            a = 0.06 + k / 10 * 0.94
+            x = cx + s_ * (a - 0.5) * W
+            z = cz + (face.lid_top(a, fem) - 0.5) * Hh + 0.0012
+            pts.append(on(x, z, 0.0024))
+            rad.append(0.0007 + 0.0026 * math.sin(math.pi * (0.12 + a * 0.82)) ** 0.6 * (0.6 + 0.4 * a))
+        for ext, up in ((0.07, 0.04), (0.13, 0.1)):
+            a = 1 + ext
+            pts.append(on(cx + s_ * (a - 0.5) * W, cz + (face.lid_top(1.0, fem) - 0.5 + up) * Hh, 0.0024))
+            rad.append(0.0016 if ext < 0.1 else 0.0006)
+        mb.tube(pts, rad, lash, seg=8, flat=0.55)
+        # 下まつ毛（目じり側だけ細く）
+        pts = [on(cx + s_ * (a - 0.5) * W, cz + (face.lid_bot(a, fem) - 0.5) * Hh - 0.0006, 0.0018) for a in (0.5, 0.65, 0.8, 0.92, 1.0)]
+        mb.tube(pts, [0.0003, 0.0006, 0.0008, 0.0008, 0.0004], lash, seg=6, flat=0.6)
+        # 二重の線
+        pts = [on(cx + s_ * (a - 0.5) * W, cz + (face.lid_top(a, fem) - 0.5 + 0.17) * Hh, 0.0012) for a in (0.25, 0.4, 0.55, 0.7, 0.85)]
+        mb.tube(pts, [0.0003, 0.0006, 0.0007, 0.0006, 0.0003], crease_m, seg=6, flat=0.5)
+        # 眉（細く、目じりへ細くなる）
         pts = []
-        for k in range(5):
-            bx, bz = P(s * (0.017 + k * 0.012), 1.634 + math.sin(k / 4 * math.pi) * 0.006 - k * 0.001)
-            q, nn = surf.front(bx, bz)
-            pts.append(q + nn * 0.002)
-        mb.tube(pts, [0.0026, 0.0034, 0.0034, 0.003, 0.002], brow, seg=6, flat=0.55)
-    # 口
+        for k in range(7):
+            a = k / 6
+            bx = s_ * (0.017 + a * 0.05)
+            bz = 1.630 + 0.009 * math.sin(math.pi * a * 0.85) - a * 0.004 + (0.002 if fem else 0.0)
+            pts.append(on(bx, bz, 0.0018))
+        bw = 0.85 if fem else 1.15
+        mb.tube(pts, [r * bw for r in (0.0018, 0.0028, 0.003, 0.0027, 0.0022, 0.0015, 0.0007)], brow, seg=6, flat=0.45)
+    # 口（ほほえみ）と下くちびるの影
     pts = []
-    for k in range(5):
-        u = (k - 2) / 2
-        mx, mz = P(u * 0.013, 1.548 + abs(u) ** 2 * 0.0025)
-        q, nn = surf.front(mx, mz)
-        pts.append(q + nn * 0.0006)
-    mb.tube(pts, [0.0014, 0.0022, 0.0024, 0.0022, 0.0014], mouth, seg=6, flat=0.6)
-    ob = mb.build(cfg['name'] + "_Face", COLL)
-    rig_rigid(ob, 'head')
-    return ob
+    for k in range(9):
+        u = (k - 4) / 4
+        pts.append(on(u * 0.0145, 1.547 + abs(u) ** 2 * 0.0032 - (1 - abs(u)) * 0.0004, 0.0008))
+    mb.tube(pts, [0.0005, 0.0011, 0.0016, 0.0019, 0.002, 0.0019, 0.0016, 0.0011, 0.0005], mouth, seg=6, flat=0.55)
+    ob = mb.build(name + "_Face", COLL)
+    objs.append(ob)
+    # ほお紅
+    bl_img = bpy.data.images.get("BlushImg") or face.blush_image("BlushImg")
+    bl_m = face.tex_mat("Blush", bl_img, 0.6)
+    if fem or cfg.get('blush', True):
+        for s_ in (-1, 1):
+            objs.append(face.surface_patch(surf, P, s_ * 0.053, 1.566, 0.042, 0.024, s_, bl_m, f"{name}_Blush{'L' if s_ > 0 else 'R'}", COLL,
+                                           lift=0.0008, nu=8, nv=5))
+    for o in objs:
+        rig_rigid(o, 'head')
+    return objs
 
 
 # ------------------------------------------------------------------ 手（5 本の指）
@@ -547,9 +569,18 @@ def build_trims(cfg, surf):
                 any_ = True
     # 襟
     if not cfg.get('armor'):
-        rb = ring_around(surf, (0, 0.006, 1.425), 0.0, 0.003, 0.008, cmat(cfg, 'top'), n=40, flat=1.5)
-        _merge_cmb(mb, rb)
-        rb.bm.free()
+        # 首の付け根にそった襟（遠くの肩まで届いた点は首の太さで止める）
+        c0 = Vector((0, 0.004, 1.428))
+        pts = []
+        for k in range(41):
+            ang = k / 40 * math.tau
+            d = Vector((math.sin(ang), -math.cos(ang), 0.0))
+            hit, nn = surf.ray(c0, d, 0.12)
+            dist = (hit - c0).length if hit is not None else 0.06
+            dist = min(dist, 0.058 if abs(math.sin(ang)) < 0.6 else 0.064)
+            front = max(0.0, math.cos(ang))
+            pts.append(c0 + d * (dist + 0.004) + Vector((0, 0, -0.012 * front)))
+        mb.tube(pts, [0.0075] * len(pts), cmat(cfg, 'top'), seg=8, flat=1.5)
         any_ = True
     if not any_:
         return []
@@ -617,7 +648,38 @@ def build_hair(cfg, surf):
 
     mb = CMB()
 
-    def clump(th, ph0, ph1, width, ext=0.0, lift=0.0, droop=0.0, flat=0.42, twist=0.0, tail_down=0.0, steps=7):
+    def hair_lock(pts, nrm, rad, flat, seg=10):
+        """三日月形の断面の毛束（中央がふくらみ、両端は頭に沿って内へ）"""
+        verts, faces = [], []
+        n = len(pts)
+        for i in range(n):
+            t = (pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]).normalized()
+            nn = (nrm[i] - t * nrm[i].dot(t))
+            nn = nn.normalized() if nn.length > 1e-6 else Vector((0, 0, 1))
+            sd = t.cross(nn).normalized()
+            w = rad[i]
+            th_ = w * max(flat, 0.3)
+            for k in range(seg):
+                a_ = k / seg * math.tau
+                x = math.cos(a_)
+                off = sd * x * w + nn * (math.sin(a_) * th_ * 0.6 + (1 - x * x) * w * 0.3 - w * 0.08)
+                verts.append(tuple(pts[i] + off))
+        for i in range(n - 1):
+            for k in range(seg):
+                a0 = i * seg + k
+                b0 = i * seg + (k + 1) % seg
+                faces.append((a0, a0 + seg, b0 + seg, b0))
+        tip = pts[-1] + (pts[-1] - pts[-2]).normalized() * rad[-1] * 2
+        verts.append(tuple(tip))
+        root = pts[0] - (pts[1] - pts[0]).normalized() * rad[0] * 0.5
+        verts.append(tuple(root))
+        ti, ri = len(verts) - 2, len(verts) - 1
+        for k in range(seg):
+            faces.append(((n - 1) * seg + k, ti, (n - 1) * seg + (k + 1) % seg))
+            faces.append((ri, k, (k + 1) % seg))
+        mb.poly(verts, faces, hair_m, smooth=True)
+
+    def clump(th, ph0, ph1, width, ext=0.0, lift=0.0, droop=0.0, flat=0.42, twist=0.0, tail_down=0.0, steps=7, split=True):
         pts, rad = [], []
         for i in range(steps):
             u = i / (steps - 1)
@@ -625,30 +687,40 @@ def build_hair(cfg, surf):
             t = th + twist * u
             p = S(t, ph, 1.0 + 0.02 * math.sin(u * math.pi))
             pts.append(p)
+        nrm = [outward(th + twist * (i / (steps - 1)), ph0 + (ph1 - ph0) * (i / (steps - 1))) for i in range(steps)]
         n_end = outward(th + twist, ph1)
         last = pts[-1]
         tang = (pts[-1] - pts[-2]).normalized()
-        for j in range(1, 4):
-            v = j / 3
+        for j in range(1, 5):
+            v = j / 4
             q = last + (tang * (1 - lift) + n_end * lift).normalized() * ext * v + Vector((0, 0, -droop * v * v - tail_down * v))
             pts.append(q)
+            nrm.append(n_end)
         n = len(pts)
         for i in range(n):
             u = i / (n - 1)
-            rad.append(width * (0.55 + 0.9 * math.sin(min(u * 1.6, 1.0) * math.pi * 0.5)) * (1 - u) ** 0.9 + 0.0012)
-        mb.tube([P(q) for q in pts], [r * hs for r in rad], hair_m, seg=10, flat=flat)
+            rad.append(width * (0.55 + 0.9 * math.sin(min(u * 1.6, 1.0) * math.pi * 0.5)) * (1 - u) ** 0.85 + 0.0009)
+        hair_lock([P(q) for q in pts], nrm, [r * hs for r in rad], flat)
+        # 太い束は 2 本の細い束に分けて、毛先がばらける
+        if split and width > 0.024 and ext > 0.012:
+            for sgn in (-1, 1):
+                sd = tang.cross(n_end).normalized()
+                off = sd * width * 0.3 * sgn
+                pts2 = [q + off * (k / (n - 1)) ** 2 for k, q in enumerate(pts)]
+                pts2[-1] = pts2[-1] + sd * width * 0.25 * sgn + Vector((0, 0, -0.004))
+                hair_lock([P(q) for q in pts2[n // 2:]], nrm[n // 2:], [r * hs * 0.55 for r in rad[n // 2:]], flat)
 
     if style in ('spiky', 'short', 'long'):
         # 前髪
-        nb = 9 if style != 'short' else 7
+        nb = 13 if style != 'short' else 10
         for i in range(nb):
             u = i / (nb - 1) * 2 - 1
             th = u * math.radians(48)
             end = 1.42 + (0.06 if abs(u) < 0.3 else 0.0) - abs(u) * 0.05 + rng.uniform(-0.03, 0.03)
             clump(th, 0.12, end, 0.026 if style == 'spiky' else 0.022, ext=0.03 if style != 'short' else 0.015,
-                  lift=0.15, droop=0.006, twist=-u * 0.25 + rng.uniform(-0.08, 0.08))
+                  lift=0.15, droop=0.006, twist=-u * 0.25 + rng.uniform(-0.08, 0.08), split=False)
         # 横・後ろ
-        ring = 22
+        ring = 30
         for i in range(ring):
             th = math.radians(55 + i / (ring - 1) * 250) + rng.uniform(-0.05, 0.05)
             back = -math.cos(th)  # 後ろほど 1
@@ -699,33 +771,93 @@ def rig_hair(ob):
     assign_vgroups(ob, wf)
 
 
-def build_beard(cfg):
+def lock_mesh(mb, pts, nrm, rad, flat, m, seg=10):
+    """三日月形の断面の毛束（髪・ひげ共通）"""
+    verts, faces = [], []
+    n = len(pts)
+    for i in range(n):
+        t = (pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]).normalized()
+        nn = (nrm[i] - t * nrm[i].dot(t))
+        nn = nn.normalized() if nn.length > 1e-6 else Vector((0, 0, 1))
+        sd = t.cross(nn).normalized()
+        w = rad[i]
+        th_ = w * max(flat, 0.3)
+        for k in range(seg):
+            a_ = k / seg * math.tau
+            x = math.cos(a_)
+            off = sd * x * w + nn * (math.sin(a_) * th_ * 0.6 + (1 - x * x) * w * 0.3 - w * 0.08)
+            verts.append(tuple(pts[i] + off))
+    for i in range(n - 1):
+        for k in range(seg):
+            a0 = i * seg + k
+            b0 = i * seg + (k + 1) % seg
+            faces.append((a0, a0 + seg, b0 + seg, b0))
+    tip = pts[-1] + (pts[-1] - pts[-2]).normalized() * rad[-1] * 2
+    root = pts[0] - (pts[1] - pts[0]).normalized() * rad[0] * 0.5
+    verts += [tuple(tip), tuple(root)]
+    ti, ri = len(verts) - 2, len(verts) - 1
+    for k in range(seg):
+        faces.append(((n - 1) * seg + k, ti, (n - 1) * seg + (k + 1) % seg))
+        faces.append((ri, k, (k + 1) % seg))
+    mb.poly(verts, faces, m, smooth=True)
+
+
+def build_beard(cfg, surf):
+    """あごのラインから下へ流れる毛束のひげ（口のまわりは空ける）＋口ひげ"""
     kind = cfg.get('beard')
     if not kind:
         return []
     hs = cfg.get('head_scale', 1.12)
-    el = [E_ell((0, -0.07, 1.528), 0.058, 0.04, 0.045)]
-    for s in (-1, 1):
-        el.append(E_ell((s * 0.062, -0.045, 1.56), 0.026, 0.04, 0.045))
-    if kind == 'long':
-        el += [E_ell((0, -0.08, 1.45), 0.052, 0.04, 0.085), E_ell((0, -0.075, 1.36), 0.032, 0.028, 0.05)]
-    el = [head_xf(e, hs) for e in el]
-    me = meta_mesh(cfg['name'] + "_Beard", el, res=0.007)
-    me = decimate(me, 3000)
-    ob = mesh_to_obj(me, cfg['name'] + "_Beard")
     bm_ = cmat(cfg, 'beard')
-    ob.data.materials.append(bm_)
-    mb = CMB()
+    rng = random.Random(sum(map(ord, cfg['name'])) + 5)
 
     def P(p):
         return HEAD_PIVOT + (Vector(p) - HEAD_PIVOT) * hs
-    for s in (-1, 1):
-        mb.tube([P((0, -0.103, 1.567)), P((s * 0.022, -0.103, 1.562)), P((s * 0.042, -0.094, 1.552)), P((s * 0.058, -0.08, 1.535))],
-                [0.011, 0.012, 0.009, 0.003], bm_, seg=10)
+    C = P((0, -0.01, 1.575))
+    mb = CMB()
+    # あごの下を埋める薄い土台（すき間から首が見えないように）
+    el = [head_xf(E_ell((0, -0.055, 1.522), 0.05, 0.04, 0.026), hs)]
+    for s_ in (-1, 1):
+        el.append(head_xf(E_ell((s_ * 0.06, -0.035, 1.548), 0.02, 0.03, 0.03), hs))
+    if kind == 'long':
+        el.append(head_xf(E_ell((0, -0.075, 1.47), 0.045, 0.03, 0.06), hs))
+    me = meta_mesh(cfg['name'] + "_Beard", el, res=0.006)
+    me = decimate(me, 2500)
+    base = mesh_to_obj(me, cfg['name'] + "_Beard")
+    base.data.materials.append(bm_)
+    longk = 1.0 if kind == 'long' else 0.0
+    n = 19
+    for i in range(n):
+        u = i / (n - 1) * 2 - 1                       # -1（右の耳）.. 1（左の耳）
+        th = u * math.radians(82)
+        front = math.cos(th)
+        d = Vector((math.sin(th), -math.cos(th), -0.55 - 0.25 * front)).normalized()
+        hit, nn = surf.ray(C, d, 0.3)
+        if hit is None:
+            continue
+        nn = nn.normalized()
+        L = (0.035 + 0.03 * front) + longk * (0.05 + 0.1 * front ** 2)
+        down = Vector((0, 0, -1))
+        pts, nrm = [hit - nn * 0.002], [nn]
+        for k in range(1, 6):
+            v = k / 5
+            q = hit + (down * (0.75 + 0.25 * v) + nn * (0.35 - 0.5 * v) + Vector((0, -0.25 * front, 0))).normalized() * L * v
+            q += Vector((rng.uniform(-1, 1) * 0.002, 0, 0))
+            pts.append(q)
+            nrm.append((nn + Vector((0, -front * 0.5, 0))).normalized())
+        w = (0.012 + 0.006 * front) * hs
+        rad = [w * (0.7 + 0.5 * math.sin(min(k / 5 * 1.7, 1.0) * math.pi * 0.5)) * (1 - k / 6) ** 0.7 + 0.0008 for k in range(6)]
+        lock_mesh(mb, pts, nrm, rad, 0.45, bm_)
+    # 口ひげ（鼻の下から左右へ、毛先は下がる）
+    for s_ in (-1, 1):
+        pts = [P((s_ * 0.004, -0.104, 1.566)), P((s_ * 0.02, -0.104, 1.561)), P((s_ * 0.036, -0.097, 1.552)),
+               P((s_ * 0.05, -0.086, 1.538)), P((s_ * 0.058, -0.077, 1.522))]
+        nrm = [Vector((s_ * 0.3, -1, 0.2)).normalized()] * len(pts)
+        lock_mesh(mb, pts, nrm, [0.006 * hs, 0.009 * hs, 0.008 * hs, 0.005 * hs, 0.002 * hs], 0.5, bm_)
     ob2 = mb.build(cfg['name'] + "_Mustache", COLL)
-    rig_hair(ob)
-    rig_rigid(ob2, 'head')
-    return [ob, ob2]
+    rig_hair(base)
+    rig_hair(ob2)
+    return [base, ob2]
 
 
 # ------------------------------------------------------------------ 服・装備
@@ -848,8 +980,47 @@ def build_robe(cfg):
     return [ob]
 
 
-def build_shell(cfg, body_ob, region_fn, thickness, m, name, solid=0.006):
-    """体の表面から一部を抜き出して服・鎧の層を作る（体にぴったり沿う）"""
+def shell_rims(bm, thickness, rim_m, r_tube):
+    """殻の外周（境界の辺）にそって巻きふちのチューブを作る"""
+    bnd = [e for e in bm.edges if e.is_boundary]
+    adj = {}
+    for e in bnd:
+        a, b = e.verts
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+    seen = set()
+    mb = CMB()
+    for start in list(adj.keys()):
+        if start in seen:
+            continue
+        chain = [start]
+        seen.add(start)
+        cur, prev = start, None
+        while True:
+            nxt = [v for v in adj[cur] if v is not prev and v not in seen]
+            if not nxt:
+                break
+            prev, cur = cur, nxt[0]
+            chain.append(cur)
+            seen.add(cur)
+        if len(chain) < 4:
+            continue
+        closed = start in adj[chain[-1]]
+        pts = [v.co + v.normal * (thickness * 0.5) for v in chain]
+        for _ in range(12):
+            m_ = len(pts)
+            pts = [pts[i] if (not closed and i in (0, m_ - 1)) else pts[i] * 0.5 + (pts[(i - 1) % m_] + pts[(i + 1) % m_]) * 0.25 for i in range(m_)]
+        # 細かすぎる点を間引いてなめらかに
+        step = max(1, len(pts) // 60)
+        pts = pts[::step]
+        if closed:
+            pts.append(pts[0])
+        mb.tube(pts, [r_tube] * len(pts), rim_m, seg=8, flat=1.3)
+    return mb
+
+
+def build_shell(cfg, body_ob, region_fn, thickness, m, name, solid=0.006, rim=None, rim_r=0.006):
+    """体の表面から一部を抜き出して服・鎧の層を作る（体にぴったり沿う）。rim があれば外周に巻きふち"""
     me = body_ob.data
     bm = bmesh.new()
     bm.from_mesh(me)
@@ -863,6 +1034,13 @@ def build_shell(cfg, body_ob, region_fn, thickness, m, name, solid=0.006):
     bmesh.ops.delete(bm, geom=loose, context='VERTS')
     for v in bm.verts:
         v.co += v.normal * thickness
+    rim_ob = None
+    if rim is not None:
+        bm.normal_update()
+        rmb = shell_rims(bm, 0.0, rim, rim_r)
+        if rmb.bm.verts:
+            rim_ob = rmb.build(name + "Rim", COLL)
+            assign_vgroups(rim_ob, lambda v: weights_for(v.co, cfg))
     nme = bpy.data.meshes.new(name)
     bm.to_mesh(nme)
     bm.free()
@@ -888,6 +1066,8 @@ def build_shell(cfg, body_ob, region_fn, thickness, m, name, solid=0.006):
         m2.name = name
     ob.data.shade_smooth()
     assign_vgroups(ob, lambda v: weights_for(v.co, cfg))
+    if rim is not None:
+        return [ob] + ([rim_ob] if rim_ob else [])
     return ob
 
 
@@ -1188,20 +1368,38 @@ def build_character(cfg, x_offset):
                 region_of[vi] = k
     assign_vgroups(body, lambda v: weights_for(v.co, cfg, region_of.get(v.index)))
     surf = Surface(me)
-    parts = [body, build_face(cfg, surf), build_cape(cfg), build_hands(cfg)] + build_beard(cfg) + build_hair(cfg, surf) + build_robe(cfg)
+    parts = [body, build_cape(cfg), build_hands(cfg)] + build_face(cfg, surf) + build_beard(cfg, surf) + build_hair(cfg, surf) + build_robe(cfg)
     parts += build_tunic_skirt(cfg) + build_trims(cfg, surf)
     # 鎧・エプロン・ベスト
     if cfg.get('armor'):
-        parts.append(build_shell(cfg, body, lambda c: 1.0 < c.z < 1.43 and abs(c.x) < 0.19, 0.012,
-                                 mat("ArmorSilver", (0.82, 0.84, 0.9), 0.3, 1.0), name + "_Armor"))
-        parts.append(build_shell(cfg, body, lambda c: (abs(c.x) > 0.1 and 1.30 < c.z < 1.43 and abs(c.x) < 0.24), 0.02,
-                                 mat("ArmorSilver", (0.82, 0.84, 0.9), 0.3, 1.0), name + "_Pauldrons"))
+        steel = mat("ArmorSilver", (0.72, 0.74, 0.78), 0.38, 1.0)
+        trim = mat("ArmorTrim", (0.78, 0.6, 0.3), 0.35, 1.0)
+        parts += build_shell(cfg, body, lambda c: 1.0 < c.z < 1.43 and abs(c.x) < 0.19, 0.012, steel, name + "_Armor", rim=trim, rim_r=0.0055)
+        # 肩当ては 3 枚の板を重ねる
+        for k, (z0, z1, t) in enumerate(((1.36, 1.44, 0.024), (1.32, 1.39, 0.018), (1.28, 1.35, 0.013))):
+            parts += build_shell(cfg, body, lambda c, z0=z0, z1=z1: (abs(c.x) > 0.11 and z0 < c.z < z1 and abs(c.x) < 0.25), t, steel,
+                                 name + f"_Pauldron{k}", rim=trim, rim_r=0.004)
+        # 胸の中心の稜線と、びょう
+        rmb = CMB()
+        pts = []
+        for k in range(9):
+            z = 1.05 + k * 0.045
+            q, nn = surf.front(0, z)
+            pts.append(q + nn * 0.016)
+        rmb.tube(pts, [0.006] * len(pts), steel, seg=8, flat=0.7)
+        for z in (1.12, 1.24, 1.36):
+            for sx in (-0.13, 0.13):
+                q, nn = surf.front(sx, z)
+                rmb.add('sphere', trim, loc=q + nn * 0.015, scale=(0.0065, 0.0065, 0.0065), seg=10, rings=6)
+        rob = rmb.build(name + "_ArmorDetail", COLL)
+        assign_vgroups(rob, lambda v: weights_for(v.co, cfg))
+        parts.append(rob)
     if cfg.get('apron'):
-        parts.append(build_shell(cfg, body, lambda c: c.y < -0.02 and 0.55 < c.z < 1.3 and abs(c.x) < 0.13, 0.01,
-                                 cmat(cfg, 'apron'), name + "_Apron"))
+        parts += build_shell(cfg, body, lambda c: c.y < -0.02 and 0.55 < c.z < 1.3 and abs(c.x) < 0.13, 0.01,
+                             cmat(cfg, 'apron'), name + "_Apron", rim=cmat(cfg, 'apron'), rim_r=0.005)
     if cfg.get('vest'):
-        parts.append(build_shell(cfg, body, lambda c: 0.98 < c.z < 1.40 and abs(c.x) < 0.17 and not (c.y < -0.05 and abs(c.x) < 0.03), 0.009,
-                                 cmat(cfg, 'vest'), name + "_Vest"))
+        parts += build_shell(cfg, body, lambda c: 0.98 < c.z < 1.40 and abs(c.x) < 0.17 and not (c.y < -0.05 and abs(c.x) < 0.03), 0.009,
+                             cmat(cfg, 'vest'), name + "_Vest", rim=mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0), rim_r=0.004)
     parts += build_gear(cfg, surf)
     attach(parts, arm_ob)
     arm_ob.location = (x_offset, 0, 0)
@@ -1210,37 +1408,37 @@ def build_character(cfg, x_offset):
     return arm_ob
 
 
-SKIN_C = (1.0, 0.80, 0.68)
+SKIN_C = (1.0, 0.77, 0.63)
 CHARS = [
     dict(name='Hero', build='male', tunic_flare=True, lacing=True, tunic_len=0.80, sleeves='short', gloves=True, hair='spiky',
          cape=(0.78, 0.13, 0.12), sword=True, shield=(0.18, 0.32, 0.72), eye=(0.30, 0.18, 0.10),
          colors=dict(skin=SKIN_C, top=(0.16, 0.38, 0.76), pants=(0.86, 0.82, 0.70), boot=(0.38, 0.23, 0.12),
                      belt=(0.32, 0.19, 0.10), glove=(0.42, 0.27, 0.14), hair=(0.24, 0.15, 0.09))),
-    dict(name='King', build='portly', robe=True, hem=True, sleeves='long', hair='short', beard='long', crown=True, fur=True,
+    dict(name='King', eyes='adult', build='portly', robe=True, hem=True, sleeves='long', hair='short', beard='long', crown=True, fur=True,
          cape=(0.62, 0.06, 0.12), cape_len=0.12, staff='gold', eye=(0.25, 0.2, 0.15),
          colors=dict(skin=SKIN_C, top=(0.72, 0.12, 0.15), robe=(0.62, 0.08, 0.13), boot=(0.4, 0.25, 0.1), hair=(0.93, 0.93, 0.93),
                      beard=(0.95, 0.95, 0.95), sash=(1.0, 0.78, 0.25))),
-    dict(name='Guard', build='male', sleeves='long', gloves=True, hair='helmet', helmet=True, armor=True, spear=True, tunic_flare=True,
+    dict(name='Guard', eyes='adult', build='male', sleeves='long', gloves=True, hair='helmet', helmet=True, armor=True, spear=True, tunic_flare=True,
          tunic_len=0.78, eye=(0.2, 0.15, 0.1),
          colors=dict(skin=SKIN_C, top=(0.22, 0.28, 0.55), pants=(0.25, 0.25, 0.3), boot=(0.25, 0.18, 0.12), belt=(0.3, 0.2, 0.1),
                      glove=(0.35, 0.25, 0.15))),
-    dict(name='Minister', build='slim', robe=True, sleeves='long', hair='bald', beard='short', eye=(0.2, 0.2, 0.2),
+    dict(name='Minister', eyes='adult', build='slim', robe=True, sleeves='long', hair='bald', beard='short', eye=(0.2, 0.2, 0.2),
          colors=dict(skin=SKIN_C, top=(0.26, 0.24, 0.52), robe=(0.24, 0.22, 0.48), boot=(0.3, 0.2, 0.1), hair=(0.6, 0.58, 0.55),
                      beard=(0.62, 0.6, 0.58))),
-    dict(name='Villager', build='male', sleeves='long', hair='short', tunic_len=0.9, eye=(0.3, 0.2, 0.1),
+    dict(name='Villager', eyes='adult', build='male', sleeves='long', hair='short', tunic_len=0.9, eye=(0.3, 0.2, 0.1),
          colors=dict(skin=SKIN_C, top=(0.42, 0.58, 0.28), pants=(0.45, 0.34, 0.24), boot=(0.35, 0.22, 0.12), belt=(0.3, 0.2, 0.1),
                      hair=(0.45, 0.28, 0.12))),
     dict(name='Girl', build='female', scale=0.94, dress=True, sleeves='short', hair='long', eye=(0.15, 0.45, 0.4),
          colors=dict(skin=SKIN_C, top=(1.0, 0.62, 0.68), dress=(0.98, 0.52, 0.62), pants=(0.97, 0.95, 0.92), boot=(0.55, 0.25, 0.2),
                      belt=(0.95, 0.9, 0.85), hair=(0.92, 0.6, 0.22), ribbon=(1.0, 0.95, 0.95))),
-    dict(name='Innkeeper', build='portly', sleeves='long', hair='short', beard='short', apron=True, tunic_len=0.9, eye=(0.2, 0.15, 0.1),
+    dict(name='Innkeeper', eyes='adult', build='portly', sleeves='long', hair='short', beard='short', apron=True, tunic_len=0.9, eye=(0.2, 0.15, 0.1),
          colors=dict(skin=SKIN_C, top=(0.72, 0.56, 0.36), pants=(0.36, 0.3, 0.25), boot=(0.3, 0.2, 0.12), belt=(0.3, 0.2, 0.1),
                      hair=(0.24, 0.15, 0.1), beard=(0.26, 0.16, 0.1), apron=(0.96, 0.95, 0.9))),
-    dict(name='Merchant', build='male', sleeves='long', hair='turban', vest=True, tunic_len=0.9, eye=(0.15, 0.12, 0.1),
+    dict(name='Merchant', eyes='adult', build='male', sleeves='long', hair='turban', vest=True, tunic_len=0.9, eye=(0.15, 0.12, 0.1),
          colors=dict(skin=(0.92, 0.70, 0.55), top=(0.95, 0.88, 0.7), pants=(0.45, 0.25, 0.25), boot=(0.4, 0.22, 0.12),
                      belt=(0.7, 0.15, 0.15), hair=(0.15, 0.12, 0.1), hat=(0.98, 0.95, 0.88), hatband=(0.3, 0.55, 0.8),
                      gem=(0.1, 0.8, 0.4), vest=(0.25, 0.45, 0.72))),
-    dict(name='Elder', build='slim', robe=True, sleeves='long', hair='bald', beard='long', staff='magic', eye=(0.25, 0.25, 0.3),
+    dict(name='Elder', eyes='adult', build='slim', robe=True, sleeves='long', hair='bald', beard='long', staff='magic', eye=(0.25, 0.25, 0.3),
          colors=dict(skin=(0.98, 0.80, 0.70), top=(0.48, 0.38, 0.55), robe=(0.44, 0.34, 0.52), boot=(0.3, 0.2, 0.1),
                      hair=(0.9, 0.9, 0.9), beard=(0.95, 0.95, 0.95))),
     # ---- 仲間
@@ -1248,7 +1446,7 @@ CHARS = [
          witch_hat=(0.28, 0.14, 0.45), cape=(0.32, 0.18, 0.5), cape_len=0.62, eye=(0.2, 0.6, 0.35),
          colors=dict(skin=SKIN_C, top=(0.5, 0.3, 0.72), dress=(0.42, 0.22, 0.62), pants=(0.96, 0.92, 0.86), boot=(0.32, 0.18, 0.3),
                      belt=(0.95, 0.75, 0.25), hair=(0.98, 0.52, 0.28), ribbon=(0.95, 0.75, 0.25))),
-    dict(name='Gald', build='male', scale=1.1, head_scale=1.05, sleeves='long', gloves=True, hair='short', beard='short', armor=True,
+    dict(name='Gald', eyes='adult', build='male', scale=1.1, head_scale=1.05, sleeves='long', gloves=True, hair='short', beard='short', armor=True,
          axe=True, cape=(0.14, 0.32, 0.2), tunic_flare=True, tunic_len=0.8, eye=(0.25, 0.18, 0.1),
          colors=dict(skin=(0.92, 0.72, 0.58), top=(0.38, 0.3, 0.24), pants=(0.3, 0.26, 0.22), boot=(0.26, 0.17, 0.1), belt=(0.25, 0.16, 0.08),
                      glove=(0.35, 0.24, 0.14), hair=(0.55, 0.2, 0.08), beard=(0.5, 0.18, 0.08))),

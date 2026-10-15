@@ -140,10 +140,12 @@ export class ModelLibrary {
         p.clearcoatRoughness = 0.45;
       }
       if (skin) {
-        p.roughness = 0.52;
-        p.sheen = 0.35;
-        p.sheenRoughness = 0.6;
-        p.sheenColor = new THREE.Color(1.0, 0.55, 0.45);
+        p.roughness = 0.5;
+        p.sheen = 0.5;
+        p.sheenRoughness = 0.55;
+        p.sheenColor = new THREE.Color(1.0, 0.5, 0.4);
+        // 光が肌の中で散るような、ほんのりした赤み
+        p.emissive = m.color.clone().multiply(new THREE.Color(0.06, 0.025, 0.018));
       }
       if (m.side === THREE.DoubleSide) p.side = THREE.DoubleSide;
       r = p;
@@ -152,6 +154,15 @@ export class ModelLibrary {
     const dk = detailKind(n);
     if (dk && !/^Mon_/.test(n)) addDetail(r, dk);
     if (/Eye|Iris|Pupil/i.test(n)) { r.roughness = 0.08; r.envMapIntensity = 1.4; }
+    // 描いた目・ほお紅は肌の上に重ねる半透明の板
+    if (/_EyeTex$|^Blush$/.test(n)) {
+      r.transparent = true;
+      r.depthWrite = false;
+      r.polygonOffset = true;
+      r.polygonOffsetFactor = -2;
+      r.polygonOffsetUnits = -2;
+      if (/Blush/.test(n)) { r.roughness = 0.8; r.envMapIntensity = 0; }
+    }
     this._upgraded.set(m, r);
     return r;
   }
