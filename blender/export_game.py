@@ -58,7 +58,7 @@ if bpy.context.window:
     bpy.context.window.scene = world
 export_glb([bpy.data.collections["Terrain"], bpy.data.collections["Buildings"]], os.path.join(OUT, "world.glb"))
 export_glb([bpy.data.collections["Prototypes"]], os.path.join(OUT, "props.glb"), vcol='NONE')
-export_glb([bpy.data.collections["Characters"]], os.path.join(OUT, "characters.glb"), vcol='NONE', anim=True)
+export_glb([bpy.data.collections["Characters"]], os.path.join(OUT, "characters.glb"), vcol='ACTIVE', anim=True)
 if "Interiors" in bpy.data.collections:
     export_glb([bpy.data.collections["Interiors"]], os.path.join(OUT, "interiors.glb"), vcol='NONE')
 

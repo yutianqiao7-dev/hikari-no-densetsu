@@ -76,53 +76,95 @@ vec3 dtPerturb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float fd) {
 
 // ---------------------------------------------------------------- トゥーン（ドラクエ8風のくっきりした陰と輪郭線）
 // 2 段にするのは色（拡散光）だけ。つや（鏡面反射）を変えると影の面で値が極端に大きくなる
-const TOON_CHUNK = THREE.ShaderChunk.lights_physical_pars_fragment.replace(
-  'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );',
-  'reflectedLight.directDiffuse += toonStep( dotNL ) * directLight.color * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );');
+const LAMBERT = 'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );';
+const TOON_CHUNK = THREE.ShaderChunk.lights_physical_pars_fragment.replace(LAMBERT,
+  'reflectedLight.directDiffuse += toonStep( toonNL( geometryNormal, dotNL ) ) * directLight.color * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );');
 if (TOON_CHUNK === THREE.ShaderChunk.lights_physical_pars_fragment) console.warn('toon: chunk not patched');
-const TOON_FN = /* glsl */`
+
+/** キャラの陰を決める「決まった光」の向き（画面に対して左上・手前から）。いつも影の面がはっきり出る */
+export const KEY_DIR = { value: new THREE.Vector3(-0.66, 0.5, 0.56).normalize() };
+
+const TOON_FN = (char, soft) => /* glsl */`
+uniform vec3 uKeyDir;
 float toonStep(float x) {
-  // 明るい面と影の面の 2 段（境目は少しだけぼかす）。明るい面の中にもうっすら段
-  return mix(0.28, 1.0, smoothstep(0.1, 0.17, x)) * (0.9 + 0.1 * smoothstep(0.45, 0.6, x));
+  // 明るい面と影の面の 2 段（境目はごく細くぼかす）。明るい面の中にもうっすら段。肌は影を浅く
+  return mix(${soft ? '0.5' : (char ? '0.2' : '0.28')}, 1.0, smoothstep(0.1, 0.14, x)) * (0.88 + 0.12 * smoothstep(0.5, 0.56, x));
+}
+float toonNL(vec3 n, float dl) {
+  ${char ? 'return max(dot(n, uKeyDir), 0.0) * 0.75 + dl * 0.25;' : 'return dl;'}
 }`;
 
-/** 光の当たり方を 2 段にする（金属のつや＝鏡面反射はそのまま） */
-export function toonify(mat) {
+// 縁の明るい線（リムライト）と、髪の天使の輪
+const RIM = (hair) => /* glsl */`
+{
+  vec3 rN = normalize(normal);
+  vec3 rV = normalize(vViewPosition);
+  float ndv = saturate(dot(rN, rV));
+  float rim = smoothstep(0.66, 0.72, 1.0 - ndv) * smoothstep(-0.3, 0.3, dot(rN, uKeyDir));
+  totalEmissiveRadiance += diffuseColor.rgb * rim * 0.6 + vec3(rim * 0.05);
+  ${hair ? `float band = smoothstep(0.1, 0.02, abs(rN.y - 0.42)) * smoothstep(0.35, 0.7, ndv);
+  totalEmissiveRadiance += vec3(1.0, 0.96, 0.88) * band * 0.3 * (0.5 + dtH);` : ''}
+}`;
+
+/**
+ * 光の当たり方を 2 段にする（金属のつや＝鏡面反射はそのまま）。
+ * kind: 'world'（太陽どおり）/ 'char'（決まった光＋縁の線）/ 'hair'（さらに天使の輪）
+ */
+export function toonify(mat, kind = 'world') {
   if (!mat || mat.userData.toon || mat.isMeshBasicMaterial) return mat;
   mat.userData.toon = true;
+  const char = kind !== 'world';
   const prev = mat.onBeforeCompile;
   const k0 = mat.customProgramCacheKey ? mat.customProgramCacheKey.call(mat) : '';
   mat.onBeforeCompile = (sh, r) => {
     if (prev) prev(sh, r);
-    sh.fragmentShader = sh.fragmentShader.replace('#include <lights_physical_pars_fragment>', TOON_FN + '\n' + TOON_CHUNK);
+    sh.uniforms.uKeyDir = KEY_DIR;
+    sh.fragmentShader = sh.fragmentShader.replace('#include <lights_physical_pars_fragment>', TOON_FN(char, kind === 'skin') + '\n' + TOON_CHUNK);
+    if (char) {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n' + RIM(kind === 'hair'));
+      // Blender で焼いたすき間の陰（頂点の色）：少し強めて、くっきり
+      sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', `#ifdef USE_COLOR
+        diffuseColor.rgb *= mix(vec3(1.0), pow(clamp(vColor.rgb * 1.08, 0.0, 1.0), vec3(1.6)), ${kind === 'skin' ? '0.3' : '0.85'});
+      #endif`);
+    }
   };
-  mat.customProgramCacheKey = () => k0 + '-toon';
+  mat.customProgramCacheKey = () => k0 + '-toon-' + kind;
   mat.needsUpdate = true;
   return mat;
 }
 
-export const OUTLINE = { value: 0.0065 };
+/** 輪郭線の太さ（画面上のピクセル）と画面の大きさ。毎フレーム main から更新する */
+export const OUTLINE_PX = { value: 2.0 };
+export const OUTLINE_RES = { value: new THREE.Vector2(1024, 640) };
 const HIDE = new THREE.MeshBasicMaterial({ visible: false });
 
 /** 輪郭線の色：もとの色を暗く、少し赤茶寄りに */
 function outlineMat(base) {
   const c = base.color ? base.color.clone() : new THREE.Color(0.4, 0.4, 0.4);
-  c.multiplyScalar(0.3).lerp(new THREE.Color(0.07, 0.04, 0.035), 0.4);
+  c.multiplyScalar(0.22).lerp(new THREE.Color(0.06, 0.035, 0.03), 0.5);
   const m = new THREE.MeshBasicMaterial({ color: c, side: THREE.BackSide });
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uOW = OUTLINE;
+    sh.uniforms.uOWpx = OUTLINE_PX;
+    sh.uniforms.uRes = OUTLINE_RES;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uOW;')
+      .replace('#include <common>', '#include <common>\nuniform float uOWpx;\nuniform vec2 uRes;')
       .replace('#include <project_vertex>', `
         #ifdef USE_SKINNING
           vec3 olN = normalize(objectNormal);
         #else
           vec3 olN = normalize(normal);
         #endif
-        transformed += olN * uOW;
-        #include <project_vertex>`);
+        transformed += olN * 0.0015;
+        #include <project_vertex>
+        // 画面の上で一定の太さに外へ押し出す（遠くでは少し細く）
+        vec4 cn = projectionMatrix * vec4(normalize(normalMatrix * olN), 0.0);
+        vec2 od = cn.xy;
+        float ol = length(od);
+        od = ol > 1e-5 ? od / ol : vec2(0.0);
+        float px = uOWpx * clamp(9.0 / max(gl_Position.w, 0.1), 0.4, 1.0);
+        gl_Position.xy += od * px * 2.0 / uRes * gl_Position.w;`);
   };
-  m.customProgramCacheKey = () => 'outline';
+  m.customProgramCacheKey = () => 'outline2';
   m.userData.outline = true;
   return m;
 }
@@ -241,7 +283,7 @@ export class ModelLibrary {
     if (/Blade|Silver|Armor|Gold|Sapphire|Ruby/i.test(n)) r.envMapIntensity = 1.6;
     const dk = detailKind(n);
     if (dk && !/^Mon_/.test(n)) addDetail(r, dk);
-    toonify(r);
+    toonify(r, /^Mon_/.test(n) ? 'char' : (dk === 'hair' ? 'hair' : (dk === 'skin' ? 'skin' : 'char')));
     if (/Eye|Iris|Pupil/i.test(n)) { r.roughness = 0.08; r.envMapIntensity = 1.4; }
     // 描いた目・ほお紅は肌の上に重ねる半透明の板
     if (/_EyeTex$|^Blush$/.test(n)) {
@@ -318,7 +360,7 @@ export class ModelLibrary {
           if (e && (e.r || e.g || e.b)) e.set(recolor[mm.name]).multiplyScalar(Math.max(0.6, Math.max(e.r, e.g, e.b)));
         }
         if (mm.name === 'Gel') mm = this.gelify(mm);
-        toonify(mm);
+        toonify(mm, 'char');
         o.material = mm;
         o.material.emissive = o.material.emissive || new THREE.Color();
         o.material.userData.baseEmissive = o.material.emissive.clone();

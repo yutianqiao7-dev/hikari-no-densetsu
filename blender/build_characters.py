@@ -1886,6 +1886,104 @@ def build_corset(cfg, surf):
     return [ob]
 
 
+def limb_loft(mb, surf, a, b, t0, t1, add, m, rows=6, seg=24, flare=0.0):
+    """手足の表面から少し浮かせた筒（籠手など）。端は少し広がる"""
+    a, b = Vector(a), Vector(b)
+    ax = (b - a).normalized()
+    u = ax.cross(Vector((0, 1, 0)))
+    if u.length < 1e-3:
+        u = ax.cross(Vector((1, 0, 0)))
+    u.normalize()
+    v = ax.cross(u).normalized()
+    verts, faces, rings = [], [], []
+    for r in range(rows + 1):
+        t = t0 + (t1 - t0) * r / rows
+        c = a.lerp(b, t)
+        ring = []
+        for k in range(seg):
+            ang = k / seg * math.tau
+            d = u * math.cos(ang) + v * math.sin(ang)
+            hit, nn = surf.ray(c, d, 0.2)
+            dist = (hit - c).length if hit is not None else 0.04
+            ring.append(len(verts))
+            verts.append(tuple(c + d * (dist + add + flare * (r / rows) ** 2)))
+        rings.append(ring)
+    for r in range(rows):
+        for k in range(seg):
+            i0, i1 = rings[r][k], rings[r][(k + 1) % seg]
+            j0, j1 = rings[r + 1][k], rings[r + 1][(k + 1) % seg]
+            faces.append((i0, j0, j1, i1))
+    mb.poly(verts, faces, m, smooth=True)
+    return [Vector(verts[i]) for i in rings[0]], [Vector(verts[i]) for i in rings[-1]]
+
+
+def build_accessories(cfg, surf, body):
+    """籠手・ブーツのベルト・肩当て・首飾り"""
+    out = []
+    gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+    mb = CMB()
+    any_ = False
+    br = cfg.get('bracers')
+    if br:
+        bm_ = mat(cfg['name'] + "_Bracer", br, 0.35 if sum(br) > 1.5 else 0.6, 1.0 if sum(br) > 1.5 else 0.0)
+        for sd in ('L', 'R'):
+            fa = BMAP[f'forearm.{sd}']
+            r0, r1 = limb_loft(mb, surf, fa[1], fa[2], 0.5, 0.86, 0.009, bm_, flare=0.004)
+            mb.tube(r0 + [r0[0]], [0.0045] * (len(r0) + 1), gold, seg=6)
+            mb.tube(r1 + [r1[0]], [0.0045] * (len(r1) + 1), gold, seg=6)
+            a, b = Vector(fa[1]), Vector(fa[2])
+            c = a.lerp(b, 0.68)
+            for k in range(3):
+                ang = k / 3 * math.tau + 0.4
+                ax = (b - a).normalized()
+                u = ax.cross(Vector((0, 1, 0))).normalized()
+                v = ax.cross(u).normalized()
+                d = u * math.cos(ang) + v * math.sin(ang)
+                hit, nn = surf.ray(c, d, 0.2)
+                if hit is not None:
+                    mb.add('sphere', gold, loc=hit + d * 0.011, scale=(0.0055, 0.0055, 0.0055), seg=8, rings=5)
+        any_ = True
+    if cfg.get('boot_straps'):
+        sm = cmat(cfg, 'belt')
+        for sd in ('L', 'R'):
+            sh = BMAP[f'shin.{sd}']
+            a, b = Vector(sh[1]), Vector(sh[2])
+            bh = cfg.get('boot_h', 0.33)
+            for z in (bh - 0.07, bh - 0.17):
+                t = (a.z - z) / (a.z - b.z)
+                limb_ring(mb, surf, a, b, t, 0.006, 0.006, sm, flat=0.45)
+                q = a.lerp(b, t)
+                hit, nn = surf.ray(q, Vector((0, -1, 0)), 0.2)
+                if hit is not None:
+                    mb.add('cube', gold, loc=hit + Vector((0, -0.011, 0)), scale=(0.018, 0.005, 0.014), bevel=0.002)
+        any_ = True
+    if cfg.get('pendant'):
+        pts = []
+        for k in range(17):
+            t = k / 16
+            ang = (t - 0.5) * 2.3
+            x = math.sin(ang) * 0.075
+            z = 1.425 - (1 - math.cos(ang)) * 0.0 - (math.cos(ang * 0.5)) * 0.06 + 0.06
+            q, nn = surf.front(x, z)
+            pts.append(q + nn * 0.006)
+        mb.tube(pts, [0.0022] * len(pts), gold, seg=6)
+        q, nn = surf.front(0, 1.355)
+        mb.add('sphere', gold, loc=q + nn * 0.01, scale=(0.014, 0.006, 0.018))
+        mb.add('sphere', mat("Sapphire", (0.15, 0.35, 1.0), 0.1), loc=q + nn * 0.015, scale=(0.009, 0.004, 0.012))
+        any_ = True
+    if any_:
+        ob = mb.build(cfg['name'] + "_Accessories", COLL)
+        assign_vgroups(ob, lambda v: weights_for(v.co, cfg))
+        out.append(ob)
+    sg = cfg.get('shoulder_guard')
+    if sg:
+        sgm = mat(cfg['name'] + "_ShoulderGuard", sg, 0.55)
+        for k, (z0, z1, t) in enumerate(((1.355, 1.46, 0.022), (1.315, 1.395, 0.016))):
+            out += build_shell(cfg, body, lambda c, z0=z0, z1=z1: (c.x > 0.1 and z0 < c.z < z1 and c.x < 0.26), t, sgm,
+                               cfg['name'] + f"_Guard{k}", rim=gold, rim_r=0.004)
+    return out
+
+
 # ------------------------------------------------------------------ 武器の部品
 def loft(mb, sections, m, cap=True, smooth=False):
     """同じ点数の断面（Vector のリスト）を順につないだ立体"""
@@ -2012,6 +2110,7 @@ def build_character(cfg, x_offset):
     parts += build_tunic_skirt(cfg) + build_trims(cfg, surf)
     parts += build_capelet(cfg, surf) + build_tabard(cfg, surf) + build_bell_cuffs(cfg, surf) + build_corset(cfg, surf)
     parts += build_scarf(cfg, surf) + build_bandolier(cfg, surf) + build_puff_sleeves(cfg, surf) + build_chest_bow(cfg, surf) + build_fur_mantle(cfg)
+    parts += build_accessories(cfg, surf, body)
     # 鎧・エプロン・ベスト
     if cfg.get('armor'):
         steel = mat("ArmorSilver", (0.72, 0.74, 0.78), 0.38, 1.0)
@@ -2052,7 +2151,7 @@ def build_character(cfg, x_offset):
 
 SKIN_C = (1.0, 0.77, 0.63)
 CHARS = [
-    dict(name='Hero', build='male', eye_style='cool', tunic_flare=True, lacing=True, tunic_len=0.80, sleeves='long', gloves='fingerless',
+    dict(name='Hero', bracers=(0.4, 0.26, 0.14), boot_straps=True, shoulder_guard=(0.36, 0.22, 0.12), build='male', eye_style='cool', tunic_flare=True, lacing=True, tunic_len=0.80, sleeves='long', gloves='fingerless',
          hair='spiky', headband=(0.82, 0.12, 0.1), scarf=(0.8, 0.13, 0.1), bandolier=True, sword=True, shield=(0.16, 0.3, 0.68),
          eye=(0.22, 0.32, 0.55), boot_h=0.36,
          colors=dict(skin=SKIN_C, top=(0.13, 0.26, 0.62), under=(0.95, 0.93, 0.88), pants=(0.32, 0.25, 0.2), boot=(0.36, 0.22, 0.12),
@@ -2085,17 +2184,17 @@ CHARS = [
          colors=dict(skin=(0.98, 0.80, 0.70), top=(0.48, 0.38, 0.55), robe=(0.44, 0.34, 0.52), boot=(0.3, 0.2, 0.1),
                      hair=(0.9, 0.9, 0.9), beard=(0.95, 0.95, 0.95))),
     # ---- 仲間
-    dict(name='Milia', eye_style='cute', puff=True, chest_bow=(1.0, 0.42, 0.6), bow_z=1.36, capelet=(0.98, 0.97, 0.95), capelet_bottom=1.36,
+    dict(name='Milia', boot_straps=True, eye_style='cute', puff=True, chest_bow=(1.0, 0.42, 0.6), bow_z=1.36, capelet=(0.98, 0.97, 0.95), capelet_bottom=1.36,
          stockings=True, build='female', scale=0.92, head_scale=1.06, dress=True, sleeves='short', hair='twintails', staff='magic',
          witch_hat=(0.3, 0.16, 0.5), cape=(0.34, 0.18, 0.55), cape_len=0.66, eye=(0.15, 0.62, 0.4), boot_h=0.3,
          colors=dict(skin=SKIN_C, top=(0.52, 0.3, 0.78), dress=(0.46, 0.24, 0.7), pants=(0.96, 0.92, 0.86), boot=(0.34, 0.16, 0.36),
                      belt=(0.95, 0.75, 0.25), hair=(1.0, 0.5, 0.25), ribbon=(1.0, 0.42, 0.6), stock=(0.46, 0.24, 0.7), stock2=(0.98, 0.96, 0.95))),
-    dict(name='Gald', eyes='adult', eye_style='cool', scar=True, fur_mantle=(0.42, 0.3, 0.2), build='male', scale=1.12, head_scale=0.92,
+    dict(name='Gald', bracers=(0.72, 0.74, 0.78), boot_straps=True, eyes='adult', eye_style='cool', scar=True, fur_mantle=(0.42, 0.3, 0.2), build='male', scale=1.12, head_scale=0.92,
          sleeves='long', gloves=True, hair='spiky', beard='short', armor=True, axe=True, cape=(0.5, 0.1, 0.08), tunic_flare=True, tunic_len=0.8,
          eye=(0.3, 0.22, 0.12),
          colors=dict(skin=(0.9, 0.68, 0.52), top=(0.32, 0.24, 0.2), pants=(0.26, 0.22, 0.2), boot=(0.24, 0.15, 0.09), belt=(0.25, 0.16, 0.08),
                      glove=(0.32, 0.21, 0.12), hair=(0.62, 0.2, 0.08), beard=(0.55, 0.18, 0.08))),
-    dict(name='Serena', eye_style='cute', capelet=(0.96, 0.96, 0.99), tabard=(0.22, 0.4, 0.82), bell_cuffs=True, chest_bow=(0.25, 0.45, 0.9), bow_z=1.31,
+    dict(name='Serena', pendant=True, eye_style='cute', capelet=(0.96, 0.96, 0.99), tabard=(0.22, 0.4, 0.82), bell_cuffs=True, chest_bow=(0.25, 0.45, 0.9), bow_z=1.31,
          braids=True, flower=(1.0, 0.75, 0.82), build='female', scale=0.95, head_scale=1.04, robe=True, sleeves='long', hair='long', staff='gold',
          circlet=True, eye=(0.22, 0.42, 0.88),
          colors=dict(skin=(1.0, 0.84, 0.74), top=(0.95, 0.95, 0.98), robe=(0.92, 0.93, 0.99), boot=(0.85, 0.8, 0.7),

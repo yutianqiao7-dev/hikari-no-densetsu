@@ -17,7 +17,7 @@ import { Flight } from './game/flight.js';
 import { fieldMenu, inn, shop } from './game/menu.js';
 import { ISLANDS } from './world/world.js';
 import { CUT, setTextureQuality } from './world/surfaces.js';
-import { toonify } from './actors/models.js';
+import { toonify, OUTLINE_PX, OUTLINE_RES } from './actors/models.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -211,6 +211,8 @@ class Game {
     this.fx.update(dt);
     this.ambient(dt);
     if (this.mode === 'field' || this.mode === 'cutscene') this.hud.tick(f, this.sky);
+    this.renderer.r.getDrawingBufferSize(OUTLINE_RES.value);
+    OUTLINE_PX.value = 1.6 * this.renderer.r.getPixelRatio();
     this.renderer.render(this.scene, this.camera, this.t);
     // 開発用：画面を画像として送る（?dev のとき window.cap(名前)）
     if (window.__capName) {
