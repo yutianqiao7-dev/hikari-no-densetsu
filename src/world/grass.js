@@ -96,8 +96,8 @@ function makeField({ count, radius, blade, hf, heightTex, colorTex, shared, flow
         // 蛍光っぽい緑をおさえ、少しオリーブ寄りに。ところどころ枯れ色
         vec3 gc = vGCol;
         float gl = dot(gc, vec3(0.3, 0.59, 0.11));
-        gc = mix(vec3(gl), gc, 0.74) * vec3(1.04, 0.98, 0.82);
-        gc = mix(gc, gc * vec3(1.22, 1.08, 0.62), smoothstep(0.75, 0.35, vGAO) * 0.45);
+        gc = mix(vec3(gl), gc, 0.95) * vec3(1.0, 1.0, 0.9);
+        gc = mix(gc, gc * vec3(1.18, 1.08, 0.7), smoothstep(0.75, 0.35, vGAO) * 0.3);
         vec3 base = gc * 0.66;
         vec3 tip = gc * 1.2 + vec3(0.045, 0.04, 0.0);
         diffuseColor.rgb = mix(base * vGAO, tip, smoothstep(0.0, 1.0, vGY));

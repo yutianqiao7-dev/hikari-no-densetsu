@@ -31,7 +31,7 @@ const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
     uTime: { value: 0 },
-    uSaturation: { value: 1.03 },
+    uSaturation: { value: 1.14 },
     uContrast: { value: 1.04 },
     uTint: { value: new THREE.Vector3(1, 1, 1) },
     uVignette: { value: 0.32 },

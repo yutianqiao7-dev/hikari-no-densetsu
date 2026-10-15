@@ -94,7 +94,7 @@ def head_xf(el, hs):
 # ------------------------------------------------------------------ 体の要素
 def body_elems(cfg):
     b = cfg.get('build', 'male')
-    hs = cfg.get('head_scale', 1.12)
+    hs = cfg.get('head_scale', 0.98)
     fem = b == 'female'
     lw = 0.86 if fem else (1.0 if b != 'slim' else 0.9)     # 手足の太さ
     sw = 0.88 if fem else 1.0                                  # 肩幅
@@ -332,7 +332,7 @@ def build_face(cfg, surf):
     """描いた目（face.py）＋まつ毛の線・二重・眉・口・ほお紅"""
     import face
     importlib.reload(face)
-    hs = cfg.get('head_scale', 1.12)
+    hs = cfg.get('head_scale', 0.98)
     fem = cfg.get('build') == 'female'
     name = cfg['name']
 
@@ -354,8 +354,8 @@ def build_face(cfg, surf):
     eye_img = face.eye_image(name + "_EyeImg", cfg.get('eye', (0.25, 0.15, 0.08)), fem)
     eye_m = face.tex_mat(name + "_EyeTex", eye_img, 0.12)
     objs = []
-    W = 0.046 if fem else 0.043
-    Hh = 0.044 if fem else 0.039
+    W = 0.042 if fem else 0.039
+    Hh = 0.039 if fem else 0.033
     if cfg.get('eyes') == 'adult':        # 大人の男性は少し細い目
         W *= 0.95
         Hh *= 0.74
@@ -610,7 +610,7 @@ def build_hair(cfg, surf):
     style = cfg.get('hair', 'short')
     if style in ('none', 'helmet'):
         return []
-    hs = cfg.get('head_scale', 1.12)
+    hs = cfg.get('head_scale', 0.98)
     hair_m = cmat(cfg, 'hair')
     rng = random.Random(sum(map(ord, cfg['name'])))
 
@@ -807,7 +807,7 @@ def build_beard(cfg, surf):
     kind = cfg.get('beard')
     if not kind:
         return []
-    hs = cfg.get('head_scale', 1.12)
+    hs = cfg.get('head_scale', 0.98)
     bm_ = cmat(cfg, 'beard')
     rng = random.Random(sum(map(ord, cfg['name'])) + 5)
 
@@ -1080,7 +1080,7 @@ def build_gear(cfg, surf):
     silver = mat("Silver", (0.85, 0.87, 0.92), 0.25, 1.0)
     wood = mat("Wood", (0.42, 0.27, 0.14), 0.8)
     leather = mat("Leather", (0.30, 0.18, 0.10), 0.6)
-    hs = cfg.get('head_scale', 1.12)
+    hs = cfg.get('head_scale', 0.98)
     out = []
 
     def P(p):
@@ -1786,15 +1786,15 @@ CHARS = [
          colors=dict(skin=(0.98, 0.80, 0.70), top=(0.48, 0.38, 0.55), robe=(0.44, 0.34, 0.52), boot=(0.3, 0.2, 0.1),
                      hair=(0.9, 0.9, 0.9), beard=(0.95, 0.95, 0.95))),
     # ---- 仲間
-    dict(name='Milia', corset=(0.24, 0.12, 0.34), build='female', scale=0.93, head_scale=1.15, dress=True, sleeves='short', hair='long', staff='magic',
+    dict(name='Milia', corset=(0.24, 0.12, 0.34), build='female', scale=0.93, head_scale=1.03, dress=True, sleeves='short', hair='long', staff='magic',
          witch_hat=(0.28, 0.14, 0.45), cape=(0.32, 0.18, 0.5), cape_len=0.62, eye=(0.2, 0.6, 0.35),
          colors=dict(skin=SKIN_C, top=(0.5, 0.3, 0.72), dress=(0.42, 0.22, 0.62), pants=(0.96, 0.92, 0.86), boot=(0.32, 0.18, 0.3),
                      belt=(0.95, 0.75, 0.25), hair=(0.98, 0.52, 0.28), ribbon=(0.95, 0.75, 0.25))),
-    dict(name='Gald', eyes='adult', build='male', scale=1.1, head_scale=1.05, sleeves='long', gloves=True, hair='short', beard='short', armor=True,
+    dict(name='Gald', eyes='adult', build='male', scale=1.1, head_scale=0.93, sleeves='long', gloves=True, hair='short', beard='short', armor=True,
          axe=True, cape=(0.14, 0.32, 0.2), tunic_flare=True, tunic_len=0.8, eye=(0.25, 0.18, 0.1),
          colors=dict(skin=(0.92, 0.72, 0.58), top=(0.38, 0.3, 0.24), pants=(0.3, 0.26, 0.22), boot=(0.26, 0.17, 0.1), belt=(0.25, 0.16, 0.08),
                      glove=(0.35, 0.24, 0.14), hair=(0.55, 0.2, 0.08), beard=(0.5, 0.18, 0.08))),
-    dict(name='Serena', capelet=(0.94, 0.95, 0.99), tabard=(0.22, 0.4, 0.82), bell_cuffs=True, build='female', scale=0.96, head_scale=1.13, robe=True, sleeves='long', hair='long', staff='gold', circlet=True,
+    dict(name='Serena', capelet=(0.94, 0.95, 0.99), tabard=(0.22, 0.4, 0.82), bell_cuffs=True, build='female', scale=0.96, head_scale=1.0, robe=True, sleeves='long', hair='long', staff='gold', circlet=True,
          eye=(0.2, 0.35, 0.8),
          colors=dict(skin=(1.0, 0.84, 0.74), top=(0.94, 0.94, 0.97), robe=(0.9, 0.92, 0.98), boot=(0.85, 0.8, 0.7),
                      hair=(0.86, 0.88, 0.96), ribbon=(0.3, 0.5, 0.9), sash=(0.25, 0.45, 0.85))),

@@ -17,6 +17,7 @@ import { Flight } from './game/flight.js';
 import { fieldMenu, inn, shop } from './game/menu.js';
 import { ISLANDS } from './world/world.js';
 import { CUT, setTextureQuality } from './world/surfaces.js';
+import { toonify } from './actors/models.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -85,7 +86,8 @@ class Game {
     this.hud.buildBaseMap(this.world);
     this.hud.setVisible(false);
     this.field = new Field(this);
-    this.world.onMapLoaded = (map) => this.field.addIslandNpcs(map);
+    this.world.onMapLoaded = (map) => { this.field.addIslandNpcs(map); this.toonWorld(); };
+    this.toonWorld();
     this.story = new Story(this);
     this.flight = new Flight(this);
     const st = this.world.marker('Start');
@@ -193,7 +195,7 @@ class Game {
     if (this.mode !== 'flight') this.sky.update(dt, focus, this.camera);
     // 時間帯の色調（夜は青く・彩度を落とす、夕方は暖色）
     const gu = this.renderer.grade.uniforms, sk = this.sky;
-    gu.uSaturation.value = 1.12 - sk.night * 0.36 + sk.dusk * 0.05;
+    gu.uSaturation.value = 1.18 - sk.night * 0.4 + sk.dusk * 0.05;
     gu.uVignette.value = 0.32;
     gu.uTint.value.set(1 - sk.night * 0.2 + sk.dusk * 0.06, 1 - sk.night * 0.07, 1 + sk.night * 0.16 - sk.dusk * 0.08);
     if (this.world.interiors.current) this.applyInteriorLighting();
@@ -838,6 +840,15 @@ class Game {
     this.mode = 'field';
     this.field.area = undefined;
     await this.ui.fadeTo(0, 700);
+  }
+
+  /** 背景（地形・建物・木・草）もキャラと同じ 2 段の陰影にする（ドラクエ8風） */
+  toonWorld() {
+    this.scene.traverse((o) => {
+      if (!o.isMesh || o.name === 'Ocean') return;
+      const ms = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of ms) if (m && (m.isMeshStandardMaterial) && !m.userData.noToon) toonify(m);
+    });
   }
 
   /** スタッフロール（ms 表示して消える） */

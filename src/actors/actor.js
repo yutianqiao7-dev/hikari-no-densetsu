@@ -9,6 +9,7 @@ const HOLD_BEND = 1.2; // blender/build_characters.py と同じ
 export class Humanoid {
   constructor(lib, model) {
     const h = lib.humanoid(model);
+    this.outlinePairs = h.outlinePairs || [];
     this.root = h.root;
     this.mixer = h.mixer;
     this.actions = h.actions;
@@ -94,6 +95,7 @@ export class Humanoid {
     const hb = this.holdBone;
     if (hb) hb.quaternion.copy(this.holdBase);
     this.mixer.update(dt);
+    for (const [a, b] of this.outlinePairs) b.visible = a.visible;
     if (hb) { this.holdBase.copy(hb.quaternion); hb.quaternion.multiply(this.holdQ); }
   }
 }
@@ -106,6 +108,7 @@ export class Monster {
     this.root = m.root;
     this.parts = m.parts;
     this.mats = m.mats;
+    this.outlineMats = m.outlineMats || [];
     this.kind = def.model.replace('Mon_', '');
     this.t = Math.random() * 10;
     this.speed = 0;
@@ -125,6 +128,7 @@ export class Monster {
   setOpacity(v) {
     this.opacity = v;
     for (const m of this.mats) { m.transparent = v < 1; m.opacity = v; m.depthWrite = v > 0.5; }
+    for (const m of this.outlineMats) m.visible = v > 0.97;
   }
 
   update(dt) {

@@ -74,6 +74,90 @@ vec3 dtPerturb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float fd) {
   mat.needsUpdate = true;
 }
 
+// ---------------------------------------------------------------- トゥーン（ドラクエ8風のくっきりした陰と輪郭線）
+// 2 段にするのは色（拡散光）だけ。つや（鏡面反射）を変えると影の面で値が極端に大きくなる
+const TOON_CHUNK = THREE.ShaderChunk.lights_physical_pars_fragment.replace(
+  'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );',
+  'reflectedLight.directDiffuse += toonStep( dotNL ) * directLight.color * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );');
+if (TOON_CHUNK === THREE.ShaderChunk.lights_physical_pars_fragment) console.warn('toon: chunk not patched');
+const TOON_FN = /* glsl */`
+float toonStep(float x) {
+  // 明るい面と影の面の 2 段（境目は少しだけぼかす）。明るい面の中にもうっすら段
+  return mix(0.28, 1.0, smoothstep(0.1, 0.17, x)) * (0.9 + 0.1 * smoothstep(0.45, 0.6, x));
+}`;
+
+/** 光の当たり方を 2 段にする（金属のつや＝鏡面反射はそのまま） */
+export function toonify(mat) {
+  if (!mat || mat.userData.toon || mat.isMeshBasicMaterial) return mat;
+  mat.userData.toon = true;
+  const prev = mat.onBeforeCompile;
+  const k0 = mat.customProgramCacheKey ? mat.customProgramCacheKey.call(mat) : '';
+  mat.onBeforeCompile = (sh, r) => {
+    if (prev) prev(sh, r);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <lights_physical_pars_fragment>', TOON_FN + '\n' + TOON_CHUNK);
+  };
+  mat.customProgramCacheKey = () => k0 + '-toon';
+  mat.needsUpdate = true;
+  return mat;
+}
+
+export const OUTLINE = { value: 0.0065 };
+const HIDE = new THREE.MeshBasicMaterial({ visible: false });
+
+/** 輪郭線の色：もとの色を暗く、少し赤茶寄りに */
+function outlineMat(base) {
+  const c = base.color ? base.color.clone() : new THREE.Color(0.4, 0.4, 0.4);
+  c.multiplyScalar(0.3).lerp(new THREE.Color(0.07, 0.04, 0.035), 0.4);
+  const m = new THREE.MeshBasicMaterial({ color: c, side: THREE.BackSide });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uOW = OUTLINE;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uOW;')
+      .replace('#include <project_vertex>', `
+        #ifdef USE_SKINNING
+          vec3 olN = normalize(objectNormal);
+        #else
+          vec3 olN = normalize(normal);
+        #endif
+        transformed += olN * uOW;
+        #include <project_vertex>`);
+  };
+  m.customProgramCacheKey = () => 'outline';
+  m.userData.outline = true;
+  return m;
+}
+
+/** 輪郭線：裏返した少し太いメッシュを重ねる（スキンメッシュは同じ骨で動かす） */
+export function addOutlines(root, skip) {
+  const list = [];
+  root.traverse((o) => { if (o.isMesh && !o.userData.isOutline) list.push(o); });
+  for (const o of list) {
+    if (skip && skip.test(o.name)) continue;
+    const src = Array.isArray(o.material) ? o.material : [o.material];
+    if (src.every((m) => m.transparent || m.userData.noOutline)) continue;
+    const oms = src.map((m) => (m.transparent || m.userData.noOutline ? HIDE : outlineMat(m)));
+    const mm = Array.isArray(o.material) ? oms : oms[0];
+    let ol;
+    if (o.isSkinnedMesh) {
+      ol = new THREE.SkinnedMesh(o.geometry, mm);
+      ol.bind(o.skeleton, o.bindMatrix);
+      ol.bindMode = o.bindMode;
+      ol.position.copy(o.position);
+      ol.quaternion.copy(o.quaternion);
+      ol.scale.copy(o.scale);
+      o.parent.add(ol);
+    } else {
+      ol = new THREE.Mesh(o.geometry, mm);
+      o.add(ol);
+    }
+    ol.name = o.name + '_Outline';
+    ol.userData.isOutline = true;
+    ol.castShadow = false;
+    ol.receiveShadow = false;
+    ol.frustumCulled = false;
+  }
+}
+
 function detailKind(n) {
   if (/_(hair|beard)$|Hair|Beard/i.test(n)) return 'hair';
   if (/_skin$|^Skin/i.test(n)) return 'skin';
@@ -100,6 +184,10 @@ export class ModelLibrary {
     for (const c of gltf.animations) this.clips[c.name] = c;
     this._upgraded = new Map();
     for (const t of Object.values(this.templates)) this.upgradeMaterials(t);
+    // 人型は顔の描いた部品を除いて輪郭線をつける（モンスターは複製したあとに）
+    for (const [k, t] of Object.entries(this.templates)) {
+      if (!/^Mon_/.test(k)) addOutlines(t, /_(Face|Eye[LR]|Blush[LR])$/);
+    }
   }
 
   upgradeMaterials(root) {
@@ -153,6 +241,7 @@ export class ModelLibrary {
     if (/Blade|Silver|Armor|Gold|Sapphire|Ruby/i.test(n)) r.envMapIntensity = 1.6;
     const dk = detailKind(n);
     if (dk && !/^Mon_/.test(n)) addDetail(r, dk);
+    toonify(r);
     if (/Eye|Iris|Pupil/i.test(n)) { r.roughness = 0.08; r.envMapIntensity = 1.4; }
     // 描いた目・ほお紅は肌の上に重ねる半透明の板
     if (/_EyeTex$|^Blush$/.test(n)) {
@@ -195,14 +284,19 @@ export class ModelLibrary {
     const actions = {};
     for (const [k, clip] of Object.entries(this.clips)) actions[k] = mixer.clipAction(clip);
     const parts = {};
+    const byName = {};
     root.traverse((o) => {
       if (o.isMesh) o.frustumCulled = false;
-      if (o !== root && o.name.startsWith(name + '_')) {
+      byName[o.name] = o;
+      if (o !== root && o.name.startsWith(name + '_') && !o.userData.isOutline) {
         const key = o.name.slice(name.length + 1);
         if (!parts[key]) parts[key] = o;
       }
     });
-    return { root, mixer, actions, parts };
+    // 部品を隠したら輪郭線も隠す（剣と鞘の持ちかえなど）
+    const outlinePairs = [];
+    root.traverse((o) => { if (o.userData.isOutline && byName[o.name.replace(/_Outline$/, '')]) outlinePairs.push([byName[o.name.replace(/_Outline$/, '')], o]); });
+    return { root, mixer, actions, parts, outlinePairs };
   }
 
   /** モンスター（部位ごとのオブジェクト） */
@@ -213,6 +307,7 @@ export class ModelLibrary {
     const parts = {};
     const mats = [];
     root.traverse((o) => {
+      if (o.isMesh && o.userData.isOutline) return;
       if (o.isMesh) {
         o.castShadow = true;
         o.receiveShadow = true;
@@ -223,6 +318,7 @@ export class ModelLibrary {
           if (e && (e.r || e.g || e.b)) e.set(recolor[mm.name]).multiplyScalar(Math.max(0.6, Math.max(e.r, e.g, e.b)));
         }
         if (mm.name === 'Gel') mm = this.gelify(mm);
+        toonify(mm);
         o.material = mm;
         o.material.emissive = o.material.emissive || new THREE.Color();
         o.material.userData.baseEmissive = o.material.emissive.clone();
@@ -232,6 +328,9 @@ export class ModelLibrary {
       parts[key] = o;
       o.userData.rest = { p: o.position.clone(), r: o.rotation.clone(), s: o.scale.clone() };
     });
-    return { root, parts, mats };
+    addOutlines(root);
+    const outlineMats = [];
+    root.traverse((o) => { if (o.userData.isOutline) { o.material = o.material.clone(); outlineMats.push(o.material); } });
+    return { root, parts, mats, outlineMats };
   }
 }
