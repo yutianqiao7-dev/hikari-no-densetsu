@@ -1210,9 +1210,14 @@ def build_gear(cfg, surf):
     if cfg.get('sword'):
         mb = CMB()
         mb.add('cyl', leather, loc=palm, rot=(math.pi / 2, 0, 0), r1=0.014, r2=0.014, depth=0.11, seg=12)
-        mb.add('cube', gold, loc=palm + Vector((0, -0.065, 0)), scale=(0.17, 0.022, 0.03))
+        for k in range(6):
+            mb.add('cyl', leather, loc=palm + Vector((0, -0.045 + k * 0.018, 0)), rot=(math.pi / 2, 0, 0), r1=0.0165, r2=0.0165, depth=0.008, seg=12)
+        # 反った鍔（先が玉）と中央の宝石
+        g0 = palm + Vector((0, -0.065, 0))
         for s in (-1, 1):
-            mb.add('sphere', gold, loc=palm + Vector((s * 0.085, -0.065, 0)), scale=(0.018, 0.018, 0.018))
+            mb.tube([g0, g0 + Vector((s * 0.05, 0.004, 0.006)), g0 + Vector((s * 0.085, 0.012, 0.022))], [0.016, 0.012, 0.009], gold, seg=10, flat=0.7)
+            mb.add('sphere', gold, loc=g0 + Vector((s * 0.088, 0.013, 0.026)), scale=(0.014, 0.014, 0.014))
+        mb.add('sphere', mat("Sapphire", (0.15, 0.35, 1.0), 0.1), loc=g0 + Vector((0, 0, 0.0)), scale=(0.012, 0.016, 0.012))
         blade = mat("Blade", (0.92, 0.94, 0.98), 0.12, 1.0, double=True)
         L = 0.78
         bv, bf = [], []
@@ -1245,21 +1250,23 @@ def build_gear(cfg, surf):
         out.append(ob)
     if cfg.get('axe'):
         mb = CMB()
-        iron = mat("AxeIron", (0.62, 0.64, 0.68), 0.3, 1.0)
-        mb.add('cyl', wood, loc=hpalm + Vector((0, 0, 0.12)), r1=0.022, r2=0.02, depth=1.05, seg=10)
+        iron = mat("AxeIron", (0.42, 0.44, 0.48), 0.42, 1.0)
+        edge = mat("Blade", (0.92, 0.94, 0.98), 0.12, 1.0, double=True)
+        mb.add('cyl', wood, loc=hpalm + Vector((0, 0, 0.12)), r1=0.021, r2=0.019, depth=1.05, seg=12)
         top = hpalm + Vector((0, 0, 0.55))
         for sd in (-1, 1):
-            # 三日月形の刃（前後に）
-            pts = [(0, 0, 0.13), (0, sd * 0.16, 0.2), (0, sd * 0.27, 0.08), (0, sd * 0.29, -0.06), (0, sd * 0.22, -0.18), (0, 0, -0.1)]
-            verts = [tuple(top + Vector(q)) for q in pts]
-            verts += [tuple(top + Vector(q) + Vector((0.025, 0, 0))) for q in pts]
-            n = len(pts)
-            faces = [tuple(range(n)), tuple(reversed(range(n, 2 * n)))]
-            for k in range(n):
-                faces.append((k, (k + 1) % n, n + (k + 1) % n, n + k))
-            mb.poly([tuple(Vector(v) - Vector((0.0125, 0, 0))) for v in verts], faces, iron, smooth=False)
-        mb.add('cube', gold, loc=top, scale=(0.06, 0.06, 0.12))
-        mb.add('cyl', iron, loc=top + Vector((0, 0, 0.17)), r1=0.025, r2=0.0, depth=0.12, seg=6)
+            axe_head(mb, top, iron, edge, sd, wood)
+        # 刃を留める金具（輪・びょう）と頭の突起
+        mb.add('cyl', iron, loc=top, r1=0.034, r2=0.034, depth=0.3, seg=12)
+        for dz in (-0.15, 0.15):
+            mb.add('cyl', gold, loc=top + Vector((0, 0, dz)), r1=0.038, r2=0.038, depth=0.022, seg=16)
+        for dz in (-0.07, 0.0, 0.07):
+            for sx in (-1, 1):
+                mb.add('sphere', gold, loc=top + Vector((sx * 0.017, 0, dz)), scale=(0.007, 0.007, 0.007), seg=8, rings=5)
+        mb.add('cyl', iron, loc=top + Vector((0, 0, 0.24)), r1=0.022, r2=0.0, depth=0.16, seg=8)
+        # 握りの革巻きと、石突き
+        grip_wrap(mb, hpalm + Vector((0, 0, -0.16)), Vector((0, 0, 1)), 0.022, 0.32, leather, turns=9)
+        mb.add('cyl', gold, loc=hpalm + Vector((0, 0, -0.41)), r1=0.026, r2=0.016, depth=0.06, seg=12)
         held(mb)
         ob = mb.build(name + "_Axe", COLL)
         rig_rigid(ob, 'hand.R')
@@ -1267,8 +1274,26 @@ def build_gear(cfg, surf):
     if cfg.get('spear'):
         mb = CMB()
         mb.add('cyl', wood, loc=hpalm + Vector((0, 0, 0.35)), r1=0.014, r2=0.013, depth=2.0, seg=10)
-        mb.add('cyl', silver, loc=hpalm + Vector((0, 0, 1.43)), r1=0.035, r2=0.0, depth=0.18, seg=4, scale=(1, 0.3, 1))
-        mb.add('cube', gold, loc=hpalm + Vector((0, 0, 1.33)), scale=(0.07, 0.02, 0.02))
+        base = hpalm + Vector((0, 0, 1.33))
+        # 木の葉形の穂先（中央に稜線のあるひし形の断面）
+        secs = []
+        for k in range(13):
+            u = k / 12
+            w = 0.034 * math.sin(math.pi * min(u * 1.25, 1.0)) ** 0.8 * (1 - u) ** 0.4 + 0.002
+            t = 0.009 * (1 - u) + 0.0015
+            z = 0.02 + u * 0.26
+            secs.append([base + Vector((0, -w, z)), base + Vector((t, 0, z)), base + Vector((0, w, z)), base + Vector((-t, 0, z))])
+        loft(mb, secs, mat("Blade", (0.92, 0.94, 0.98), 0.12, 1.0, double=True))
+        mb.add('cyl', silver, loc=base + Vector((0, 0, -0.03)), r1=0.016, r2=0.012, depth=0.12, seg=10)
+        mb.add('cyl', gold, loc=base + Vector((0, 0, -0.09)), r1=0.019, r2=0.019, depth=0.02, seg=12)
+        # 赤い房
+        tas = mat("Tassel", (0.75, 0.08, 0.1), 0.85)
+        for k in range(10):
+            a = k / 10 * math.tau
+            p0 = base + Vector((math.cos(a) * 0.012, math.sin(a) * 0.012, -0.1))
+            mb.tube([p0, p0 + Vector((math.cos(a) * 0.02, math.sin(a) * 0.02, -0.06)), p0 + Vector((math.cos(a) * 0.026, math.sin(a) * 0.026, -0.13))],
+                    [0.006, 0.005, 0.002], tas, seg=6)
+        mb.add('cyl', silver, loc=hpalm + Vector((0, 0, -0.66)), r1=0.016, r2=0.006, depth=0.06, seg=10)
         held(mb)
         ob = mb.build(name + "_Spear", COLL)
         rig_rigid(ob, 'hand.R')
@@ -1276,16 +1301,44 @@ def build_gear(cfg, surf):
     if cfg.get('staff'):
         mb = CMB()
         kind = cfg['staff']
-        mb.add('cyl', gold if kind == 'gold' else wood, loc=hpalm + Vector((0, 0, 0.25)), r1=0.013, r2=0.016, depth=1.45, seg=10)
         top = hpalm + Vector((0, 0, 0.98))
         if kind == 'gold':
-            mb.add('sphere', gold, loc=top, scale=(0.04, 0.04, 0.04))
-            mb.add('sphere', mat("Ruby", (0.9, 0.05, 0.1), 0.1), loc=top + Vector((0, 0, 0.05)), scale=(0.03, 0.03, 0.04))
+            mb.add('cyl', gold, loc=hpalm + Vector((0, 0, 0.25)), r1=0.012, r2=0.015, depth=1.45, seg=12)
+            for dz in (-0.5, -0.1, 0.55):
+                mb.add('cyl', gold, loc=hpalm + Vector((0, 0, dz)), r1=0.02, r2=0.02, depth=0.025, seg=14)
+            # 輪の中に浮かぶ宝石と、左右の翼の飾り
+            ring = [top + Vector((math.cos(k / 32 * math.tau) * 0.07, 0, 0.09 + math.sin(k / 32 * math.tau) * 0.08)) for k in range(33)]
+            mb.tube(ring, [0.008] * 33, gold, seg=8)
+            mb.add('sphere', mat("Ruby", (0.9, 0.05, 0.1), 0.1), loc=top + Vector((0, 0, 0.09)), scale=(0.032, 0.032, 0.042), seg=20, rings=12)
+            mb.add('sphere', gold, loc=top, scale=(0.026, 0.026, 0.03))
+            for sx in (-1, 1):
+                for k in range(3):
+                    a0 = top + Vector((sx * (0.06 + k * 0.012), 0, 0.05 - k * 0.012))
+                    mb.tube([a0, a0 + Vector((sx * 0.05, 0, 0.05 - k * 0.02)), a0 + Vector((sx * 0.09, 0, 0.09 - k * 0.04))],
+                            [0.008, 0.007, 0.002], gold, seg=6, flat=0.4)
+            mb.add('cyl', gold, loc=hpalm + Vector((0, 0, -0.5)), r1=0.014, r2=0.004, depth=0.05, seg=10)
         else:
-            mb.tube([top + Vector((0, 0, -0.04)), top + Vector((0.05, 0, 0.04)), top + Vector((0.0, 0, 0.11)), top + Vector((-0.04, 0, 0.06))],
-                    [0.016, 0.014, 0.012, 0.008], wood, seg=10)
+            # ねじれた木の杖：2 本の枝がからみ合い、上で宝石を包む
+            for ph in (0.0, math.pi):
+                pts = []
+                for k in range(29):
+                    t = k / 28
+                    z = -0.47 + t * 1.42
+                    a = ph + t * math.tau * 3.0
+                    rr = 0.009 + 0.004 * t
+                    pts.append(hpalm + Vector((math.cos(a) * rr, math.sin(a) * rr, z)))
+                mb.tube(pts, [0.011 - 0.002 * (k / 28) for k in range(29)], wood, seg=8)
+            for sx in (-1, 1):
+                pts = [top + Vector((0, 0, -0.04)), top + Vector((sx * 0.045, 0, 0.0)), top + Vector((sx * 0.05, 0, 0.07)),
+                       top + Vector((sx * 0.02, 0, 0.12)), top + Vector((-sx * 0.008, 0, 0.115))]
+                mb.tube(pts, [0.011, 0.01, 0.008, 0.006, 0.003], wood, seg=8)
             mb.add('ico', mat("MagicGlow", (0.75, 0.35, 1.0), 0.2, emit=(0.75, 0.30, 1.0), emit_strength=4.0),
-                   loc=top + Vector((0, 0, 0.05)), r=0.032, sub=2)
+                   loc=top + Vector((0, 0, 0.055)), r=0.034, sub=2)
+            for k in range(4):
+                a = k / 4 * math.tau + 0.4
+                mb.add('ico', mat("MagicGlow", (0.75, 0.35, 1.0), 0.2, emit=(0.75, 0.30, 1.0), emit_strength=4.0),
+                       loc=top + Vector((math.cos(a) * 0.012, math.sin(a) * 0.012, -0.08 - k * 0.012)), r=0.006, sub=1)
+            grip_wrap(mb, hpalm + Vector((0, 0, -0.08)), Vector((0, 0, 1)), 0.016, 0.2, mat("Leather", (0.30, 0.18, 0.10), 0.6), turns=6)
         held(mb)
         ob = mb.build(name + "_Staff", COLL)
         rig_rigid(ob, 'hand.R')
@@ -1304,10 +1357,283 @@ def build_gear(cfg, surf):
         mb.add('sphere', gold, loc=c + n * 0.035, rot=rot, scale=(0.05, 0.05, 0.015))
         mb.add('cube', gold, loc=c + n * 0.03, rot=rot, scale=(0.03, 0.34, 0.008))
         mb.add('cube', gold, loc=c + n * 0.03 + Vector((0, 0, 0.05)), rot=rot, scale=(0.26, 0.03, 0.008))
+        # ふちのびょう
+        R = rot.to_matrix()
+        for k in range(16):
+            a = k / 16 * math.tau
+            q = c + R @ Vector((math.cos(a) * 0.19, math.sin(a) * 0.228, 0.012))
+            mb.add('sphere', gold, loc=q, scale=(0.009, 0.009, 0.009), seg=8, rings=5)
         ob = mb.build(name + "_Shield", COLL)
         rig_rigid(ob, 'forearm.L')
         out.append(ob)
     return out
+
+
+# ------------------------------------------------------------------ 重ね着（ケープ・前掛け・広がる袖口・胴着）
+def build_capelet(cfg, surf):
+    """肩をおおう短いケープ（首から肩の下まで、すそが少し広がる）＋金のふち"""
+    col = cfg.get('capelet')
+    if not col:
+        return []
+    m = mat(cfg['name'] + "_Capelet", col, 0.8)
+    gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+    rows, seg = 9, 64
+    verts, faces = [], []
+    z0, z1 = 1.445, 1.255
+    ring_last = []
+    for r in range(rows + 1):
+        v = r / rows
+        z = z0 + (z1 - z0) * v
+        c = Vector((0, 0.006, z))
+        ring = []
+        for k in range(seg):
+            a = k / seg * math.tau
+            d = Vector((math.sin(a), -math.cos(a), 0))
+            hit, nn = surf.ray(c, d, 0.35)
+            dist = (hit - c).length if hit is not None else 0.2
+            # 腕の付け根で急に広がらないよう、上の段より大きく外へは出さない
+            if ring_last:
+                dist = min(dist, ring_last[k] + 0.03)
+            ring.append(dist)
+            flare = 0.012 + 0.03 * v ** 2
+            verts.append(tuple(c + d * (dist + flare) + Vector((0, 0, 0.004 * math.sin(a * 9) * v))))
+        ring_last = ring
+    for r in range(rows):
+        for k in range(seg):
+            a = r * seg + k
+            b = r * seg + (k + 1) % seg
+            faces.append((a, b, b + seg, a + seg))
+    mb = CMB()
+    mb.poly(verts, faces, m, smooth=True)
+    inner = []
+    for v in verts:
+        q = Vector(v)
+        d = Vector((q.x, q.y - 0.006, 0))
+        inner.append(tuple(q - (d.normalized() * 0.005 if d.length > 1e-6 else Vector())))
+    mb.poly(inner, [tuple(reversed(f)) for f in faces], mat(cfg['name'] + "_Lining", tuple(c_ * 0.55 for c_ in col), 0.9), smooth=True)
+    bottom = [Vector(verts[rows * seg + k]) for k in range(seg)] + [Vector(verts[rows * seg])]
+    mb.tube(bottom, [0.006] * len(bottom), gold, seg=8, flat=1.3)
+    top = [Vector(verts[k]) for k in range(seg)] + [Vector(verts[0])]
+    mb.tube(top, [0.006] * len(top), gold, seg=8, flat=1.3)
+    # 胸元の留め金
+    q, nn = surf.front(0, 1.40)
+    mb.add('sphere', gold, loc=q + nn * 0.02, scale=(0.016, 0.008, 0.016))
+    mb.add('sphere', mat("Sapphire", (0.15, 0.35, 1.0), 0.1), loc=q + nn * 0.027, scale=(0.009, 0.005, 0.009))
+    ob = mb.build(cfg['name'] + "_Capelet", COLL)
+    assign_vgroups(ob, lambda v: weights_for(v.co, cfg))
+    return [ob]
+
+
+def build_tabard(cfg, surf):
+    """胸から垂れる前掛け（金のふち・紋章）。ローブの上に重ねる"""
+    col = cfg.get('tabard')
+    if not col:
+        return []
+    m = mat(cfg['name'] + "_Tabard", col, 0.8, double=True)
+    gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+    rows, cols = 16, 8
+    verts, faces = [], []
+    z_top, z_bot = 1.3, 0.42
+
+    def robe_r(z):
+        prof = [(0.995, 0.150), (0.93, 0.168), (0.78, 0.192), (0.55, 0.225), (0.30, 0.255)]
+        if z >= prof[0][0]:
+            return None
+        for (za, ra), (zb, rb) in zip(prof, prof[1:]):
+            if zb <= z <= za:
+                t = (za - z) / (za - zb)
+                return ra + (rb - ra) * t
+        return prof[-1][1]
+    grid = []
+    for r in range(rows + 1):
+        v = r / rows
+        z = z_top + (z_bot - z_top) * v
+        w = 0.06 + 0.05 * v
+        row = []
+        for c in range(cols + 1):
+            u = c / cols * 2 - 1
+            x = u * w
+            rr = robe_r(z)
+            if rr is None:
+                q, nn = surf.front(x, z)
+                y = q.y - 0.012
+            else:
+                y = 0.012 - math.sqrt(max(rr * rr - x * x, 0.0)) * 0.9 - 0.022
+            y -= 0.006 * math.sin(u * math.pi * 2) * v
+            row.append(len(verts))
+            verts.append((x, y, z))
+        grid.append(row)
+    for r in range(rows):
+        for c in range(cols):
+            faces.append((grid[r][c], grid[r + 1][c], grid[r + 1][c + 1], grid[r][c + 1]))
+    mb = CMB()
+    mb.poly(verts, faces, m, smooth=True)
+    V_ = lambda i: Vector(verts[i]) + Vector((0, -0.004, 0))
+    for c in (0, cols):
+        mb.tube([V_(grid[r][c]) for r in range(rows + 1)], [0.0055] * (rows + 1), gold, seg=8, flat=1.2)
+    mb.tube([V_(grid[rows][c]) for c in range(cols + 1)], [0.0055] * (cols + 1), gold, seg=8, flat=1.2)
+    # 紋章（金の輪と十字）
+    ec = Vector(verts[grid[5][cols // 2]]) + Vector((0, -0.006, 0))
+    ring = [ec + Vector((math.cos(k / 24 * math.tau) * 0.035, 0, math.sin(k / 24 * math.tau) * 0.035)) for k in range(25)]
+    mb.tube(ring, [0.004] * 25, gold, seg=6)
+    mb.add('cube', gold, loc=ec, scale=(0.008, 0.006, 0.06))
+    mb.add('cube', gold, loc=ec + Vector((0, 0, 0.008)), scale=(0.045, 0.006, 0.008))
+    ob = mb.build(cfg['name'] + "_TabardCloth", COLL)
+    zt = 0.975
+
+    def wf(v):
+        z = v.co.z
+        if z > 1.0:
+            return weights_for(v.co, cfg)
+        u = max(0.0, min(1.0, (zt - z) / (zt - z_bot)))
+        wl = 0.45 * u
+        return {'hips': 1 - wl, 'thigh.L': wl / 2, 'thigh.R': wl / 2}
+    assign_vgroups(ob, wf)
+    return [ob]
+
+
+def build_bell_cuffs(cfg, surf):
+    """手首へ広がる袖口（神官服）＋金のふち"""
+    if not cfg.get('bell_cuffs'):
+        return []
+    m = cmat(cfg, 'top')
+    gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+    mb = CMB()
+    for sd in ('L', 'R'):
+        fa = BMAP[f'forearm.{sd}']
+        a, b = Vector(fa[1]), Vector(fa[2])
+        ax = (b - a).normalized()
+        u = ax.cross(Vector((0, 1, 0))).normalized()
+        v = ax.cross(u).normalized()
+        seg, rows = 24, 6
+        verts, faces = [], []
+        for r in range(rows + 1):
+            t = 0.45 + 0.6 * r / rows
+            c = a.lerp(b, t)
+            rad = 0.04 + 0.04 * (r / rows) ** 1.6
+            for k in range(seg):
+                ang = k / seg * math.tau
+                d = u * math.cos(ang) + v * math.sin(ang)
+                verts.append(tuple(c + d * rad + Vector((0, 0, -0.012 * (r / rows) ** 2 * (1 + math.cos(ang - math.pi / 2))))))
+        for r in range(rows):
+            for k in range(seg):
+                i0 = r * seg + k
+                i1 = r * seg + (k + 1) % seg
+                faces.append((i0, i1, i1 + seg, i0 + seg))
+        mb.poly(verts, faces, m, smooth=True)
+        mb.poly(verts, [tuple(reversed(f)) for f in faces], mat(cfg['name'] + "_Lining", tuple(c_ * 0.55 for c_ in cfg['colors'].get('top', (0.5, 0.5, 0.5))), 0.9), smooth=True)
+        edge = [Vector(verts[rows * seg + k]) for k in range(seg)] + [Vector(verts[rows * seg])]
+        mb.tube(edge, [0.0045] * len(edge), gold, seg=6)
+    ob = mb.build(cfg['name'] + "_Sleeves", COLL)
+    assign_vgroups(ob, lambda v_: weights_for(v_.co, cfg))
+    return [ob]
+
+
+def build_corset(cfg, surf):
+    """胴を締める幅広の胴着ベルト（上下に金のふち）と襟の星のブローチ"""
+    col = cfg.get('corset')
+    if not col:
+        return []
+    m = mat(cfg['name'] + "_Corset", col, 0.6)
+    gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+    mb = CMB()
+    rows, seg = 6, 56
+    verts, faces = [], []
+    for r in range(rows + 1):
+        z = 1.13 - 0.15 * r / rows
+        c = Vector((0, 0.006, z))
+        for k in range(seg):
+            a = k / seg * math.tau
+            d = Vector((math.sin(a), -math.cos(a), 0))
+            hit, nn = surf.ray(c, d, 0.3)
+            dist = (hit - c).length if hit is not None else 0.12
+            verts.append(tuple(c + d * (dist + 0.007)))
+    for r in range(rows):
+        for k in range(seg):
+            i0 = r * seg + k
+            i1 = r * seg + (k + 1) % seg
+            faces.append((i0, i1, i1 + seg, i0 + seg))
+    mb.poly(verts, faces, m, smooth=True)
+    for r in (0, rows):
+        ring = [Vector(verts[r * seg + k]) for k in range(seg)] + [Vector(verts[r * seg])]
+        mb.tube(ring, [0.004] * len(ring), gold, seg=6)
+    # 前の編み上げ
+    pts = []
+    for k in range(5):
+        z = 1.12 - k * 0.03
+        for sx in ((-1, 1) if k % 2 == 0 else (1, -1)):
+            q, nn = surf.front(sx * 0.018, z)
+            pts.append(q + nn * 0.011)
+    mb.tube(pts, [0.0022] * len(pts), gold, seg=6)
+    # 星のブローチ
+    q, nn = surf.front(0, 1.415)
+    star = []
+    for k in range(11):
+        a = k / 10 * math.tau
+        rr = 0.02 if k % 2 == 0 else 0.009
+        star.append(q + nn * 0.012 + Vector((math.sin(a) * rr, 0, math.cos(a) * rr)))
+    mb.poly([tuple(q + nn * 0.016)] + [tuple(v) for v in star[:-1]], [(0, i + 1, (i + 1) % 10 + 1) for i in range(10)], gold)
+    mb.add('sphere', mat("MagicGlow", (0.75, 0.35, 1.0), 0.2, emit=(0.75, 0.30, 1.0), emit_strength=4.0), loc=q + nn * 0.018, scale=(0.006, 0.004, 0.006))
+    ob = mb.build(cfg['name'] + "_Corset", COLL)
+    assign_vgroups(ob, lambda v_: weights_for(v_.co, cfg))
+    return [ob]
+
+
+# ------------------------------------------------------------------ 武器の部品
+def loft(mb, sections, m, cap=True, smooth=False):
+    """同じ点数の断面（Vector のリスト）を順につないだ立体"""
+    verts, faces = [], []
+    n = len(sections[0])
+    for sec in sections:
+        verts += [tuple(v) for v in sec]
+    for i in range(len(sections) - 1):
+        for k in range(n):
+            a = i * n + k
+            b = i * n + (k + 1) % n
+            faces.append((a, b, b + n, a + n))
+    if cap:
+        faces.append(tuple(reversed(range(n))))
+        last = (len(sections) - 1) * n
+        faces.append(tuple(range(last, last + n)))
+    mb.poly(verts, faces, m, smooth=smooth)
+
+
+def grip_wrap(mb, base, axis, r, length, m, turns=7):
+    """柄に巻いた革ひも（らせん）"""
+    axis = axis.normalized()
+    u = axis.cross(Vector((1, 0, 0)))
+    if u.length < 1e-3:
+        u = axis.cross(Vector((0, 1, 0)))
+    u.normalize()
+    v = axis.cross(u)
+    pts = []
+    n = turns * 12
+    for k in range(n + 1):
+        t = k / n
+        a = t * turns * math.tau
+        pts.append(base + axis * (t * length) + (u * math.cos(a) + v * math.sin(a)) * r)
+    mb.tube(pts, [0.0045] * len(pts), m, seg=6)
+
+
+def axe_head(mb, top, iron, edge_m, side_y, wood):
+    """両刃の斧の片側：柄から刃先へ薄くなる。刃先の帯は明るい鋼"""
+    secs_body, secs_edge = [], []
+    zs = [-0.17 + k * 0.025 for k in range(16)]
+    for z in zs:
+        u = (z + 0.17) / 0.375
+        ye = 0.12 + 0.17 * math.sin(math.pi * u) ** 0.6 + 0.05 * (abs(u - 0.5) * 2) ** 3
+        flare = 0.05 * (abs(u - 0.5) * 2) ** 4
+        y0, y1 = 0.03, ye - 0.035
+        t0 = 0.028 * (1 - 0.35 * abs(u - 0.5) * 2)
+        t1, te = 0.012, 0.003
+        sb = [top + Vector((t0 / 2, side_y * y0, z)), top + Vector((t1 / 2, side_y * y1, z + flare)),
+              top + Vector((-t1 / 2, side_y * y1, z + flare)), top + Vector((-t0 / 2, side_y * y0, z))]
+        se = [top + Vector((t1 / 2, side_y * y1, z + flare)), top + Vector((te / 2, side_y * ye, z + flare * 1.3)),
+              top + Vector((-te / 2, side_y * ye, z + flare * 1.3)), top + Vector((-t1 / 2, side_y * y1, z + flare))]
+        secs_body.append(sb)
+        secs_edge.append(se)
+    loft(mb, secs_body, iron)
+    loft(mb, secs_edge, edge_m)
 
 
 # ------------------------------------------------------------------ アーマチュア
@@ -1366,10 +1692,18 @@ def build_character(cfg, x_offset):
         if k in ('robe', 'dress'):
             for vi in p.vertices:
                 region_of[vi] = k
+    # ローブ・ドレスの下に隠れる脚は、すそと同じだけ動かす（走ると布を突き抜けないように）
+    hem = 0.14 if cfg.get('robe') else (0.44 if cfg.get('dress') else None)
+    if hem is not None:
+        kind_ = 'robe' if cfg.get('robe') else 'dress'
+        for v in me.vertices:
+            if v.co.z > hem and v.co.z < 1.0 and abs(v.co.x) < 0.2:
+                region_of.setdefault(v.index, kind_)
     assign_vgroups(body, lambda v: weights_for(v.co, cfg, region_of.get(v.index)))
     surf = Surface(me)
     parts = [body, build_cape(cfg), build_hands(cfg)] + build_face(cfg, surf) + build_beard(cfg, surf) + build_hair(cfg, surf) + build_robe(cfg)
     parts += build_tunic_skirt(cfg) + build_trims(cfg, surf)
+    parts += build_capelet(cfg, surf) + build_tabard(cfg, surf) + build_bell_cuffs(cfg, surf) + build_corset(cfg, surf)
     # 鎧・エプロン・ベスト
     if cfg.get('armor'):
         steel = mat("ArmorSilver", (0.72, 0.74, 0.78), 0.38, 1.0)
@@ -1442,7 +1776,7 @@ CHARS = [
          colors=dict(skin=(0.98, 0.80, 0.70), top=(0.48, 0.38, 0.55), robe=(0.44, 0.34, 0.52), boot=(0.3, 0.2, 0.1),
                      hair=(0.9, 0.9, 0.9), beard=(0.95, 0.95, 0.95))),
     # ---- 仲間
-    dict(name='Milia', build='female', scale=0.93, head_scale=1.15, dress=True, sleeves='short', hair='long', staff='magic',
+    dict(name='Milia', corset=(0.24, 0.12, 0.34), build='female', scale=0.93, head_scale=1.15, dress=True, sleeves='short', hair='long', staff='magic',
          witch_hat=(0.28, 0.14, 0.45), cape=(0.32, 0.18, 0.5), cape_len=0.62, eye=(0.2, 0.6, 0.35),
          colors=dict(skin=SKIN_C, top=(0.5, 0.3, 0.72), dress=(0.42, 0.22, 0.62), pants=(0.96, 0.92, 0.86), boot=(0.32, 0.18, 0.3),
                      belt=(0.95, 0.75, 0.25), hair=(0.98, 0.52, 0.28), ribbon=(0.95, 0.75, 0.25))),
@@ -1450,7 +1784,7 @@ CHARS = [
          axe=True, cape=(0.14, 0.32, 0.2), tunic_flare=True, tunic_len=0.8, eye=(0.25, 0.18, 0.1),
          colors=dict(skin=(0.92, 0.72, 0.58), top=(0.38, 0.3, 0.24), pants=(0.3, 0.26, 0.22), boot=(0.26, 0.17, 0.1), belt=(0.25, 0.16, 0.08),
                      glove=(0.35, 0.24, 0.14), hair=(0.55, 0.2, 0.08), beard=(0.5, 0.18, 0.08))),
-    dict(name='Serena', build='female', scale=0.96, head_scale=1.13, robe=True, sleeves='long', hair='long', staff='gold', circlet=True,
+    dict(name='Serena', capelet=(0.94, 0.95, 0.99), tabard=(0.22, 0.4, 0.82), bell_cuffs=True, build='female', scale=0.96, head_scale=1.13, robe=True, sleeves='long', hair='long', staff='gold', circlet=True,
          eye=(0.2, 0.35, 0.8),
          colors=dict(skin=(1.0, 0.84, 0.74), top=(0.94, 0.94, 0.97), robe=(0.9, 0.92, 0.98), boot=(0.85, 0.8, 0.7),
                      hair=(0.86, 0.88, 0.96), ribbon=(0.3, 0.5, 0.9), sash=(0.25, 0.45, 0.85))),
