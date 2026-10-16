@@ -304,7 +304,8 @@ export class ModelLibrary {
   upgradeMaterials(root) {
     root.traverse((o) => {
       if (!o.isMesh) return;
-      o.castShadow = true;
+      // まぶた・口の板は影を落とさない（顔に輪のような影が出るので）
+      o.castShadow = !/_(Eye[LR]|MouthIn)$/.test(o.name);
       o.receiveShadow = true;
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       const out = mats.map((m) => this.upgrade(m));
