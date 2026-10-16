@@ -216,6 +216,65 @@ function detailKind(n) {
 }
 
 /**
+ * AI で作った仲間（blender/build_ai_chars.py）。モデルのポーズのまま骨を入れてあるので、
+ * 共通の骨格の「休みの姿勢からの回転の差」を移して動かす。
+ * lock：その骨をどれだけ親といっしょに固めるか（1 = 腰に当てた手や杖を持つ手をそのままに）
+ */
+const RETARGET = {
+  Milia: { lock: { upper_armL: 1, forearmL: 1, handL: 1, upper_armR: 0.55, forearmR: 0.85, handR: 1 } },
+  Serena: { lock: { upper_armL: 1, forearmL: 1, handL: 1, upper_armR: 0.55, forearmR: 0.85, handR: 1, cape1: 1, cape2: 1 } },
+};
+
+function makeRetarget(hero, root, cfg) {
+  const stdHips = hero.getObjectByName('hips');
+  const cusHips = root.getObjectByName('hips');
+  if (!stdHips || !cusHips) return null;
+  const stdRoot = new THREE.Group();
+  const sh = stdHips.clone(true);
+  stdRoot.add(sh);
+  const std = {};
+  sh.traverse((o) => { if (o.isBone) std[o.name] = o; });
+  // 親から順に（休みの姿勢の、ルートから見た向き）
+  const list = [];
+  const restW = (b, top) => {
+    const q = new THREE.Quaternion();
+    for (let o = b; o && o !== top; o = o.parent) q.premultiply(o.quaternion);
+    return q;
+  };
+  cusHips.traverse((o) => {
+    if (!o.isBone || !std[o.name]) return;
+    list.push({
+      c: o, s: std[o.name],
+      parent: list.find((e) => e.c === o.parent) || null,
+      restC: restW(o, root),
+      restSinv: restW(std[o.name], stdRoot).invert(),
+      lock: (cfg.lock && cfg.lock[o.name]) || 0,
+      D: new THREE.Quaternion(), Ws: new THREE.Quaternion(), Wc: new THREE.Quaternion(),
+    });
+  });
+  const hipS = sh.position.clone(), hipC = cusHips.position.clone();
+  const ratio = hipC.length() / Math.max(hipS.length(), 1e-4);
+  const tmp = new THREE.Quaternion(), ID = new THREE.Quaternion(), dp = new THREE.Vector3();
+  return {
+    stdRoot,
+    update() {
+      for (const e of list) {
+        // 共通の骨格の、いまの向きと休みの向きの差（ルートから見て）を、この骨の休みの向きにかける
+        e.Ws.copy(e.parent ? e.parent.Ws : ID).multiply(e.s.quaternion);
+        e.D.copy(e.Ws).multiply(e.restSinv);
+        if (e.lock && e.parent) e.D.slerp(e.parent.D, e.lock);
+        e.Wc.copy(e.D).multiply(e.restC);
+        tmp.copy(e.parent ? e.parent.Wc : ID).invert();
+        e.c.quaternion.copy(tmp.multiply(e.Wc));
+      }
+      // 腰の上下・前後の動きは背の高さに合わせて
+      dp.copy(sh.position).sub(hipS);
+      cusHips.position.copy(hipC).addScaledVector(dp, ratio);
+    },
+  };
+}
+
+/**
  * characters.glb の人型・モンスターを複製して使うためのライブラリ
  * - 人型は全員同じ骨格なので Hero のアニメーションを共有する
  * - 布にはシーン（布の光沢）、髪には異方性っぽいハイライトを付けて質感を上げる
@@ -229,7 +288,11 @@ export class ModelLibrary {
       child.traverse((o) => { if (o.isBone) o.name = o.name.replace(/_\d+$/, ''); });
     }
     this.clips = {};
-    for (const c of gltf.animations) this.clips[c.name] = c;
+    for (const c of gltf.animations) {
+      // アニメーションの側も、骨の名前の _1, _2 … を取って合わせる（Hero が何番目の骨格でも動くように）
+      for (const tr of c.tracks) tr.name = tr.name.replace(/^([^.]+?)_\d+\./, '$1.');
+      this.clips[c.name] = c;
+    }
     this._upgraded = new Map();
     for (const t of Object.values(this.templates)) this.upgradeMaterials(t);
     // 人型は顔の描いた部品を除いて輪郭線をつける（モンスターは複製したあとに）
@@ -329,7 +392,9 @@ export class ModelLibrary {
     root.position.set(0, 0, 0);
     root.rotation.set(0, 0, 0);
     root.updateMatrixWorld(true);
-    const mixer = new THREE.AnimationMixer(root);
+    // AI で作ったモデルは骨の向きが共通の骨格とちがうので、見えない共通の骨格を動かして回転の差を移す
+    const rt = RETARGET[name] && this.templates.Hero ? makeRetarget(this.templates.Hero, root, RETARGET[name]) : null;
+    const mixer = new THREE.AnimationMixer(rt ? rt.stdRoot : root);
     const actions = {};
     for (const [k, clip] of Object.entries(this.clips)) actions[k] = mixer.clipAction(clip);
     const parts = {};
@@ -345,7 +410,7 @@ export class ModelLibrary {
     // 部品を隠したら輪郭線も隠す（剣と鞘の持ちかえなど）
     const outlinePairs = [];
     root.traverse((o) => { if (o.userData.isOutline && byName[o.name.replace(/_Outline$/, '')]) outlinePairs.push([byName[o.name.replace(/_Outline$/, '')], o]); });
-    return { root, mixer, actions, parts, outlinePairs };
+    return { root, mixer, actions, parts, outlinePairs, retarget: rt };
   }
 
   /** モンスター（部位ごとのオブジェクト） */

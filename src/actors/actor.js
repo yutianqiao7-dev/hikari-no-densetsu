@@ -12,6 +12,7 @@ export class Humanoid {
     this.outlinePairs = h.outlinePairs || [];
     this.root = h.root;
     this.mixer = h.mixer;
+    this.retarget = h.retarget;
     this.actions = h.actions;
     this.parts = h.parts;
     this.speed = 0;
@@ -128,6 +129,7 @@ export class Humanoid {
     const hb = this.holdBone;
     if (hb) hb.quaternion.copy(this.holdBase);
     this.mixer.update(dt);
+    if (this.retarget) this.retarget.update();
     for (const [a, b] of this.outlinePairs) b.visible = a.visible;
     this.updateFace(dt);
     if (hb) { this.holdBase.copy(hb.quaternion); hb.quaternion.multiply(this.holdQ); }

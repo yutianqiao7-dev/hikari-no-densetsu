@@ -2,3 +2,6 @@ node_modules/
 dist/
 blender/*.blend1
 __pycache__/
+
+# 元の参考画像（顔の貼りつけに使う。公開しない）
+import/*.jpg
