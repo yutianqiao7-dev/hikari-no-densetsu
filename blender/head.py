@@ -120,12 +120,22 @@ def build_head(cfg, name, coll, pivot, rig_fn):
     nr, seg = 120, 96
     bm = bmesh.new()
     rings = []
+    uvs = {}
+    FW, FH = 0.22, 0.26       # face.py の顔の絵の範囲と同じ
+
+    def uv_of(p):
+        # 顔の前は正面から投影、後ろは何も描いていない左右の端（肌の色）を使う
+        u = 0.5 + p.x / FW
+        if p.y > -0.01:
+            u = 0.5 + (0.49 if p.x >= 0 else -0.49)
+        return (min(max(u, 0.005), 0.995), min(max(0.5 + p.z / FH, 0.005), 0.995))
     for i in range(nr + 1):
         t = i / nr
         z, W, Df, Db, yc = _catmull(rows, t)
         ring = []
         if W < 1e-4:
             ring = [bm.verts.new(center + Vector((0, 0, z)) * hs)]
+            uvs[ring[0]] = uv_of(Vector((0, 1, z)))
             rings.append(ring)
             continue
         for k in range(seg):
@@ -137,7 +147,9 @@ def build_head(cfg, name, coll, pivot, rig_fn):
             else:
                 y = (-c) * Db
             p = sculpt(Vector((x, y + yc, z)), fem)
-            ring.append(bm.verts.new(center + p * hs))
+            bv = bm.verts.new(center + p * hs)
+            uvs[bv] = uv_of(p)
+            ring.append(bv)
         rings.append(ring)
     for i in range(len(rings) - 1):
         r0, r1 = rings[i], rings[i + 1]
@@ -148,8 +160,11 @@ def build_head(cfg, name, coll, pivot, rig_fn):
         for k in range(seg):
             bm.faces.new([r0[k], r1[k], r1[(k + 1) % seg], r0[(k + 1) % seg]])
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    uvl = bm.loops.layers.uv.new("UVMap")
     for f in bm.faces:
         f.smooth = True
+        for lp in f.loops:
+            lp[uvl].uv = uvs[lp.vert]
     me = bpy.data.meshes.new(name + "_Head")
     bm.to_mesh(me)
     bm.free()

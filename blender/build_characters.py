@@ -418,12 +418,12 @@ def build_face(cfg, surf):
     crease_m = mat(name + "_Crease", tuple(c * 0.72 for c in skin_c), 0.7)
     brow = mat(name + "_Brow", tuple(c * 0.7 for c in hair_c), 0.7)
     mouth = mat(name + "_Mouth", (0.62, 0.3, 0.28), 0.5)
-    st_ = cfg.get('eye_style') or ('fem' if fem else 'male')
-    eye_img = face.eye_image(name + "_EyeImg", cfg.get('eye', (0.25, 0.15, 0.08)), st_)
+    st_ = 'manga_m' if not fem else 'manga'
+    eye_img = face.manga_eye_image(name + "_EyeImg", cfg.get('eye', (0.25, 0.15, 0.08)), st_)
     eye_m = face.tex_mat(name + "_EyeTex", eye_img, 0.12)
     objs = []
-    st = cfg.get('eye_style') or ('fem' if fem else 'male')
-    W, Hh = {'cute': (0.047, 0.046), 'cool': (0.042, 0.03), 'fem': (0.042, 0.039)}.get(st, (0.039, 0.033))
+    st = st_
+    W, Hh = (0.045, 0.044) if fem else (0.043, 0.038)
     if cfg.get('eyes') == 'adult':        # 大人の男性は少し細い目
         W *= 0.95
         Hh *= 0.74
@@ -433,68 +433,11 @@ def build_face(cfg, surf):
     for s_ in (-1, 1):
         cx = s_ * 0.040
         eob = face.surface_patch(surf, P, cx, cz, W, Hh, s_, eye_m, f"{name}_Eye{'L' if s_ > 0 else 'R'}", COLL, lift=0.0014)
+        tf, bf = face.manga_lids(st)
         closed = face.patch_coords(surf, P, cx, cz, W, Hh, s_, 0.0014, 16, 10,
-                                   lambda a, b: face.lid_bot(a, st) * 0.8 + face.lid_top(a, st) * 0.2 - 0.5 + (b - 0.5) * 0.03)
+                                   lambda a, b, tf=tf, bf=bf: bf(a) * 0.7 + tf(a) * 0.3 - 0.5 + (b - 0.5) * 0.06)
         face.add_shape(eob, 'Blink', closed)
         objs.append(eob)
-    for s_ in (-1, 1):
-        cx = s_ * 0.040
-        # 上まつ毛の線（目じりへ太く、はね上がる）は別のオブジェクト（まばたきで下へ）
-        for closed_ in (False, True):
-            lmb = lash_mb if not closed_ else lash_closed
-            pts, rad = [], []
-            for k in range(11):
-                a = 0.06 + k / 10 * 0.94
-                x = cx + s_ * (a - 0.5) * W
-                if closed_:
-                    z = cz + (face.lid_bot(a, st) * 0.8 + face.lid_top(a, st) * 0.2 - 0.5) * Hh - 0.0004
-                else:
-                    z = cz + (face.lid_top(a, st) - 0.5) * Hh + 0.0012
-                pts.append(on(x, z, 0.0024))
-                rad.append((0.0007 + 0.0026 * math.sin(math.pi * (0.12 + a * 0.82)) ** 0.6 * (0.6 + 0.4 * a)) * (1.25 if st in ('cool', 'cute') else 1.0))
-            for ext, up in ((0.07, 0.04), (0.13, 0.1)):
-                a = 1 + ext
-                base_z = (face.lid_bot(1.0, st) * 0.8 + face.lid_top(1.0, st) * 0.2) if closed_ else face.lid_top(1.0, st)
-                pts.append(on(cx + s_ * (a - 0.5) * W, cz + (base_z - 0.5 + up * (0.4 if closed_ else 1.0)) * Hh, 0.0024))
-                rad.append(0.0016 if ext < 0.1 else 0.0006)
-            lmb.tube(pts, rad, lash, seg=8, flat=0.55)
-            if st == 'cute':
-                for a0, up in ((0.82, 0.16), (0.93, 0.1)):
-                    if closed_:
-                        zb = cz + (face.lid_bot(a0, st) * 0.8 + face.lid_top(a0, st) * 0.2 - 0.5) * Hh
-                        b0 = on(cx + s_ * (a0 - 0.5) * W, zb, 0.0024)
-                        b1 = on(cx + s_ * (a0 + 0.08 - 0.5) * W, zb + up * Hh * 0.3, 0.003)
-                    else:
-                        b0 = on(cx + s_ * (a0 - 0.5) * W, cz + (face.lid_top(a0, st) - 0.5) * Hh + 0.001, 0.0024)
-                        b1 = on(cx + s_ * (a0 + 0.08 - 0.5) * W, cz + (face.lid_top(a0, st) - 0.5 + up) * Hh, 0.003)
-                    lmb.tube([b0, b1], [0.0011, 0.0003], lash, seg=6)
-    for s_ in (-1, 1):
-        cx = s_ * 0.040
-        # 下まつ毛（目じり側だけ細く）
-        pts = [on(cx + s_ * (a - 0.5) * W, cz + (face.lid_bot(a, st) - 0.5) * Hh - 0.0006, 0.0018) for a in (0.5, 0.65, 0.8, 0.92, 1.0)]
-        mb.tube(pts, [0.0003, 0.0006, 0.0008, 0.0008, 0.0004], lash, seg=6, flat=0.6)
-        # 二重の線
-        pts = [on(cx + s_ * (a - 0.5) * W, cz + (face.lid_top(a, st) - 0.5 + 0.17) * Hh, 0.0012) for a in (0.25, 0.4, 0.55, 0.7, 0.85)]
-        mb.tube(pts, [0.0003, 0.0006, 0.0007, 0.0006, 0.0003], crease_m, seg=6, flat=0.5)
-        # 眉（細く、目じりへ細くなる）
-        pts = []
-        for k in range(7):
-            a = k / 6
-            bx = s_ * (0.017 + a * 0.05)
-            bz = 1.630 + 0.009 * math.sin(math.pi * a * 0.85) - a * 0.004 + (0.002 if fem else 0.0)
-            pts.append(on(bx, bz, 0.0018))
-        bw = 0.85 if fem else 1.15
-        mb.tube(pts, [r * bw for r in (0.0018, 0.0028, 0.003, 0.0027, 0.0022, 0.0015, 0.0007)], brow, seg=6, flat=0.45)
-    # 口（ほほえみ）と下くちびるの影
-    pts = []
-    for k in range(9):
-        u = (k - 4) / 4
-        pts.append(on(u * 0.0145, 1.547 + abs(u) ** 2 * 0.0032 - (1 - abs(u)) * 0.0004, 0.0008))
-    mb.tube(pts, [0.0005, 0.0011, 0.0016, 0.0019, 0.002, 0.0019, 0.0016, 0.0011, 0.0005], mouth, seg=6, flat=0.55)
-    lob = lash_mb.build(name + "_Lashes", COLL)
-    face.add_shape(lob, 'Blink', [v.co.copy() for v in lash_closed.bm.verts])
-    lash_closed.bm.free()
-    objs.append(lob)
     # 口の中（閉じているときは線になって隠れ、Talk で開く）
     mouth_in = mat(name + "_MouthIn", (0.36, 0.07, 0.08), 0.6)
     smile = lambda u: abs(u) ** 2 * 0.0032 - (1 - abs(u)) * 0.0004
@@ -523,7 +466,7 @@ def build_face(cfg, surf):
     # 鼻の下の小さな影の線
     nose_m = mat(name + "_NoseLine", tuple(c * 0.72 for c in skin_c), 0.7)
     pts = [on(u * 0.0055, 1.5768 - abs(u) * 0.0012, 0.0006) for u in (-1, -0.5, 0, 0.5, 1)]
-    mb.tube(pts, [0.0002, 0.0005, 0.0006, 0.0005, 0.0002], nose_m, seg=6, flat=0.5)
+    pass  # 鼻の線は顔の絵に描く
     # あごの下の輪郭線（耳の下からあご先へ）
     jpts = []
     for k in range(15):
@@ -545,7 +488,7 @@ def build_face(cfg, surf):
     # ほお紅
     bl_img = bpy.data.images.get("BlushImg") or face.blush_image("BlushImg")
     bl_m = face.tex_mat("Blush", bl_img, 0.6)
-    if fem or cfg.get('blush', True):
+    if False:
         for s_ in (-1, 1):
             objs.append(face.surface_patch(surf, P, s_ * 0.053, 1.566, 0.042, 0.024, s_, bl_m, f"{name}_Blush{'L' if s_ > 0 else 'R'}", COLL,
                                            lift=0.0008, nu=8, nv=5))
@@ -1134,14 +1077,40 @@ def ring_around(surf, center, z_tilt, radius_add, r_tube, m, n=40, name=None, fl
     return mb
 
 
+def pattern_mat(cfg, part, double=False):
+    """服の模様（patterns.py で描いた絵）の材質。指定がなければ None"""
+    fn = cfg.get('patterns', {}).get(part)
+    if not fn:
+        return None
+    import patterns as pat
+    importlib.reload(pat)
+    import face as facemod
+    img = getattr(pat, fn)().to_image(cfg['name'] + "_" + part + "Pat")
+    m = facemod.opaque_tex_mat(cfg['name'] + "_" + part.capitalize() + "Tex", img, 0.8)
+    m.use_backface_culling = not double
+    return m
+
+
 def build_cape(cfg):
     col = cfg.get('cape')
     if not col:
         return None
     cm = mat(cfg['name'] + "_Cape", col, 0.75, double=True)
     lining = cfg.get('cape_len', 0.48)
-    cols, rows = 18, 16
+    cols, rows = 18, 24
     verts, faces = [], []
+    fat = 0.03 if cfg.get('build') == 'portly' else 0.0
+
+    def robe_r(z):
+        if not cfg.get('robe'):
+            return None
+        prof = [(0.995, 0.150), (0.93, 0.168), (0.78, 0.192), (0.55, 0.225), (0.30, 0.255), (0.10, 0.278), (0.02, 0.285)]
+        if z >= prof[0][0]:
+            return prof[0][1]
+        for (za, ra), (zb, rb) in zip(prof, prof[1:]):
+            if zb <= z <= za:
+                return ra + (rb - ra) * (za - z) / (za - zb) + fat
+        return prof[-1][1]
     for r in range(rows + 1):
         v = r / rows
         z = 1.40 - v * (1.40 - lining)
@@ -1153,15 +1122,27 @@ def build_cape(cfg):
             y = 0.10 + v * 0.10 + (u * u) * (0.02 if v > 0.1 else -0.03) + math.sin(u * math.pi * 3 + 0.4) * 0.012 * v
             if v < 0.08:
                 y -= (1 - v / 0.08) * (u * u) * 0.08
+            # ローブの上では、ローブのすそを外から包む（背中でローブが突き抜けないように）
+            rr = robe_r(z)
+            if rr is not None:
+                q = min(1.0, abs(x) / (rr * 1.05))
+                yr = 0.012 + rr * 0.9 * 1.04 * math.sqrt(max(1 - q * q, 0.0)) + 0.03
+                k = smoothstep(1.02, 0.9, z)
+                y = max(y, y + (yr - y) * k)
             verts.append((x, y, z))
     for r in range(rows):
         for c in range(cols):
             a = r * (cols + 1) + c
             faces.append((a, a + 1, a + cols + 2, a + cols + 1))
     mb = CMB()
-    mb.poly(verts, faces, cm, smooth=True)
+    pm = pattern_mat(cfg, 'cape', double=True)
+    if pm:
+        uvs = [(c / cols, 1 - r / rows) for r in range(rows + 1) for c in range(cols + 1)]
+        mb.poly_uv(verts, faces, uvs, pm, smooth=True)
+    else:
+        mb.poly(verts, faces, cm, smooth=True)
     gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
-    if cfg.get('cape_trim'):
+    if cfg.get('cape_trim') and not pm:
         tm = mat(cfg['name'] + "_CapeTrim", cfg['cape_trim'], 0.7, double=True)
         V_ = lambda r_, c_: Vector(verts[r_ * (cols + 1) + c_]) + Vector((0, 0.004, 0))
         for c_ in (0, cols):
@@ -1201,19 +1182,37 @@ def build_robe(cfg):
     m = cmat(cfg, kind)
     mb = CMB()
     seg = 64
+    pm = pattern_mat(cfg, 'robe')
     verts, faces = [], []
-    for i, (z, r) in enumerate(prof):
-        u = i / (len(prof) - 1)
-        for k in range(seg):
-            a = k / seg * math.tau
-            rr = r * (1 + amp * u ** 1.3 * math.sin(a * folds + u * 0.8))
-            verts.append((math.sin(a) * rr, 0.012 - math.cos(a) * rr * 0.9, z))
-    for i in range(len(prof) - 1):
-        for k in range(seg):
-            a = i * seg + k
-            b = i * seg + (k + 1) % seg
-            faces.append((a, a + seg, b + seg, b))
-    mb.poly(verts, faces, m, smooth=True)
+    if pm:
+        # 模様つき：つなぎ目を背中に置き、同じ位置の列を2つ持たせて UV を切る
+        S = seg + 1
+        uvs = []
+        for i, (z, r) in enumerate(prof):
+            u = i / (len(prof) - 1)
+            for k in range(S):
+                a = k / seg * math.tau + math.pi
+                rr = r * (1 + amp * u ** 1.3 * math.sin(a * folds + u * 0.8))
+                verts.append((math.sin(a) * rr, 0.012 - math.cos(a) * rr * 0.9, z))
+                uvs.append((k / seg, 1 - (prof[0][0] - z) / (prof[0][0] - prof[-1][0])))
+        for i in range(len(prof) - 1):
+            for k in range(seg):
+                a = i * S + k
+                faces.append((a, a + S, a + S + 1, a + 1))
+        mb.poly_uv(verts, faces, uvs, pm, smooth=True)
+    else:
+        for i, (z, r) in enumerate(prof):
+            u = i / (len(prof) - 1)
+            for k in range(seg):
+                a = k / seg * math.tau
+                rr = r * (1 + amp * u ** 1.3 * math.sin(a * folds + u * 0.8))
+                verts.append((math.sin(a) * rr, 0.012 - math.cos(a) * rr * 0.9, z))
+        for i in range(len(prof) - 1):
+            for k in range(seg):
+                a = i * seg + k
+                b = i * seg + (k + 1) % seg
+                faces.append((a, a + seg, b + seg, b))
+        mb.poly(verts, faces, m, smooth=True)
     # 内側（裾からのぞいたときの裏地）
     inner = mat(cfg['name'] + "_Lining", tuple(c * 0.55 for c in cfg['colors'].get(kind, (0.5, 0.5, 0.5))), 0.9)
     mb.poly([(x * 0.985, y * 0.985, z) for (x, y, z) in verts], [tuple(reversed(f)) for f in faces], inner, smooth=True)
@@ -1970,17 +1969,26 @@ def build_tabard(cfg, surf):
         for c in range(cols):
             faces.append((grid[r][c], grid[r + 1][c], grid[r + 1][c + 1], grid[r][c + 1]))
     mb = CMB()
-    mb.poly(verts, faces, m, smooth=True)
+    pm = pattern_mat(cfg, 'tabard', double=True)
+    if pm:
+        uvs = [None] * len(verts)
+        for r in range(rows + 1):
+            for c in range(cols + 1):
+                uvs[grid[r][c]] = (c / cols, 1 - r / rows)
+        mb.poly_uv(verts, faces, uvs, pm, smooth=True)
+    else:
+        mb.poly(verts, faces, m, smooth=True)
     V_ = lambda i: Vector(verts[i]) + Vector((0, -0.004, 0))
     for c in (0, cols):
         mb.tube([V_(grid[r][c]) for r in range(rows + 1)], [0.0055] * (rows + 1), gold, seg=8, flat=1.2)
     mb.tube([V_(grid[rows][c]) for c in range(cols + 1)], [0.0055] * (cols + 1), gold, seg=8, flat=1.2)
-    # 紋章（金の輪と十字）
+    # 紋章（金の輪と十字）※模様つきなら絵で描く
     ec = Vector(verts[grid[5][cols // 2]]) + Vector((0, -0.006, 0))
     ring = [ec + Vector((math.cos(k / 24 * math.tau) * 0.035, 0, math.sin(k / 24 * math.tau) * 0.035)) for k in range(25)]
-    mb.tube(ring, [0.004] * 25, gold, seg=6)
-    mb.add('cube', gold, loc=ec, scale=(0.008, 0.006, 0.06))
-    mb.add('cube', gold, loc=ec + Vector((0, 0, 0.008)), scale=(0.045, 0.006, 0.008))
+    if not pm:
+        mb.tube(ring, [0.004] * 25, gold, seg=6)
+        mb.add('cube', gold, loc=ec, scale=(0.008, 0.006, 0.06))
+        mb.add('cube', gold, loc=ec + Vector((0, 0, 0.008)), scale=(0.045, 0.006, 0.008))
     ob = mb.build(cfg['name'] + "_TabardCloth", COLL)
     zt = 0.975
 
@@ -2435,16 +2443,25 @@ def build_overskirt(cfg, surf):
         for k in range(seg):
             faces.append((grid[r][k], grid[r + 1][k], grid[r + 1][k + 1], grid[r][k + 1]))
     mb = CMB()
-    mb.poly(verts, faces, m, smooth=True)
+    pm = pattern_mat(cfg, 'overskirt')
+    if pm:
+        uvs = [None] * len(verts)
+        for r in range(rows + 1):
+            for k in range(seg + 1):
+                uvs[grid[r][k]] = (k / seg, 1 - r / rows)
+        mb.poly_uv(verts, faces, uvs, pm, smooth=True)
+    else:
+        mb.poly(verts, faces, m, smooth=True)
     mb.poly([(x * 0.985, y * 0.985, z) for (x, y, z) in verts], [tuple(reversed(f)) for f in faces], lining, smooth=True)
     V_ = lambda r_, k_: Vector(verts[grid[r_][k_]])
     # すそと前のふちに太い帯
-    hem = [V_(rows, k) + Vector((0, 0, 0.022)) for k in range(seg + 1)]
-    mb.tube(hem, [0.022] * len(hem), tm, seg=8, flat=0.25)
+    hr = 0.008 if pm else 0.022
+    hem = [V_(rows, k) + Vector((0, 0, hr)) for k in range(seg + 1)]
+    mb.tube(hem, [hr] * len(hem), tm, seg=8, flat=0.25 if not pm else 0.6)
     for k in (0, seg):
-        mb.tube([V_(r, k) for r in range(rows + 1)], [0.012] * (rows + 1), tm, seg=8, flat=0.3)
-    # 帯の上の金の十字
-    for k in range(0, seg + 1, 4):
+        mb.tube([V_(r, k) for r in range(rows + 1)], [0.012 if not pm else 0.007] * (rows + 1), tm, seg=8, flat=0.3)
+    # 帯の上の金の十字（模様つきなら絵で描く）
+    for k in (range(0, seg + 1, 4) if not pm else ()):
         q = V_(rows, k) + Vector((0, 0, 0.024))
         ang = math.atan2(q.x, -(q.y - 0.012))
         nn = Vector((math.sin(ang), -math.cos(ang), 0))
@@ -2593,17 +2610,42 @@ def build_hat_on_back(cfg):
     hm = mat(cfg['name'] + "_BackHat", col, 0.8)
     tm = mat(cfg['name'] + "_HoodTrim", cfg['hood'][1] if cfg.get('hood') else (0.2, 0.5, 0.35), 0.6)
     mb = CMB()
-    c = Vector((0.05, 0.19, 1.24))
-    up = Vector((0.25, 0.35, 1)).normalized()
-    ax = up.cross(Vector((0, 1, 0))).normalized()
-    pts = [c + up * t * 0.3 + ax * (0.08 * t ** 2) for t in (0, 0.25, 0.5, 0.75, 1.0)]
-    mb.tube(pts, [0.09, 0.07, 0.05, 0.028, 0.004], hm, seg=16)
-    ring = [c + (ax * math.cos(a) + up.cross(ax) * math.sin(a)) * 0.17 for a in [k / 32 * math.tau for k in range(33)]]
-    mb.tube(ring, [0.02] * 33, hm, seg=8, flat=0.2)
-    ring2 = [c + up * 0.02 + (ax * math.cos(a) + up.cross(ax) * math.sin(a)) * 0.092 for a in [k / 32 * math.tau for k in range(33)]]
+    # 背中にぺたりとかけた帽子：つばは背中にそい、とんがりは後ろへ出て先が下へ折れる
+    c = Vector((0.03, 0.2, 1.2))
+    up = Vector((0.12, 1.0, 0.35)).normalized()
+    side = Vector((0, 0, 1)).cross(up).normalized()
+    v2 = up.cross(side).normalized()
+    # つば（輪の板、ふちが少し波打って垂れる）
+    nr, na = 6, 48
+    verts, faces = [], []
+    for i_ in range(nr + 1):
+        t = i_ / nr
+        rad = 0.075 + 0.11 * t
+        for k in range(na):
+            a = k / na * math.tau
+            d = side * math.cos(a) + v2 * math.sin(a)
+            p = c + d * rad + up * (-0.025 * t * t + 0.008 * math.sin(a * 5) * t)
+            verts.append(tuple(p))
+    for i_ in range(nr):
+        for k in range(na):
+            a0, b0 = i_ * na + k, i_ * na + (k + 1) % na
+            faces.append((a0, b0, b0 + na, a0 + na))
+    mb.poly(verts, faces, hm, smooth=True)
+    mb.poly([tuple(Vector(v) - up * 0.006) for v in verts], [tuple(reversed(f)) for f in faces], hm, smooth=True)
+    edge = [Vector(verts[nr * na + k % na]) - up * 0.003 for k in range(na + 1)]
+    mb.tube(edge, [0.006] * len(edge), tm, seg=6)
+    # とんがり（後ろへ出て、先は重みで下へ折れる）
+    pts, rads = [], []
+    for k in range(9):
+        t = k / 8
+        bend = max(0.0, t - 0.45) ** 1.6
+        pts.append(c + up * (0.27 * t - 0.14 * bend) - Vector((0, 0, 1)) * (0.42 * bend) + side * 0.02 * t)
+        rads.append(0.085 * (1 - t) ** 0.9 + 0.004)
+    mb.tube(pts, rads, hm, seg=18)
+    ring2 = [c + up * 0.018 + (side * math.cos(a) + v2 * math.sin(a)) * 0.084 for a in [k / 32 * math.tau for k in range(33)]]
     mb.tube(ring2, [0.012] * 33, tm, seg=8, flat=0.6)
     gem = mat("Topaz", (1.0, 0.6, 0.6), 0.1, emit=(1.0, 0.4, 0.5), emit_strength=0.8)
-    mb.add('ico', gem, loc=pts[-1] + Vector((0, 0.01, -0.05)), r=0.014, sub=1, scale=(0.7, 0.7, 1.4))
+    mb.add('ico', gem, loc=c + up * 0.03 - v2 * 0.083, r=0.014, sub=1, scale=(0.7, 0.7, 1.4))
     ob = mb.build(cfg['name'] + "_BackHat", COLL)
     rig_rigid(ob, 'chest')
     return [ob]
@@ -2788,7 +2830,12 @@ def build_character(cfg, x_offset):
             return {'head': w, 'neck': 1 - w} if w < 0.999 else {'head': 1.0}
         assign_vgroups(o, wf)
     hob, eob, hme = headmod.build_head(cfg, name, COLL, HEAD_PIVOT, rig_head)
-    hob.data.materials.append(cmat(cfg, 'skin'))
+    import face as facemod
+    importlib.reload(facemod)
+    skin_c = cfg['colors'].get('skin', SKIN_C)
+    brow_c = tuple(c * 0.55 for c in cfg['colors'].get('hair', (0.3, 0.3, 0.3)))
+    fimg = facemod.face_skin_image(name + "_FaceImg", skin_c, brow_c, cfg.get('build') != 'female')
+    hob.data.materials.append(facemod.opaque_tex_mat(name + "_FaceSkin", fimg))
     eob.data.materials.append(cmat(cfg, 'skin'))
     hsurf = Surface(hme)
     parts = [body, hob, eob, build_cape(cfg), build_hands(cfg)] + build_face(cfg, hsurf) + build_beard(cfg, hsurf) + build_hair(cfg, surf) + build_robe(cfg)
@@ -2873,7 +2920,7 @@ CHARS = [
          colors=dict(skin=(0.98, 0.80, 0.70), top=(0.48, 0.38, 0.55), robe=(0.44, 0.34, 0.52), boot=(0.3, 0.2, 0.1),
                      hair=(0.9, 0.9, 0.9), beard=(0.95, 0.95, 0.95))),
     # ---- 仲間
-    dict(name='Milia', hood=((0.42, 0.22, 0.6), (0.16, 0.42, 0.34)), hat_back=(0.42, 0.22, 0.6), earrings=(0.4, 0.8, 1.0), brooch=(0.3, 0.6, 1.0),
+    dict(name='Milia', patterns=dict(robe='milia_robe', cape='milia_cape', tabard='milia_tabard'), hood=((0.42, 0.22, 0.6), (0.16, 0.42, 0.34)), hat_back=(0.42, 0.22, 0.6), earrings=(0.4, 0.8, 1.0), brooch=(0.3, 0.6, 1.0),
          belt_items=(('pouch', -0.1), ('pouch', 0.1)), capelet=(0.42, 0.22, 0.6), capelet_bottom=1.3,
          cape=(0.4, 0.21, 0.58), cape_len=0.16, cape_trim=(0.16, 0.42, 0.34), bell_cuffs=True,
          tabard=(0.18, 0.44, 0.36), build='female', scale=0.94, head_scale=1.05, eye_style='fem', robe=True, sleeves='long',
@@ -2885,7 +2932,7 @@ CHARS = [
          eye=(0.3, 0.22, 0.12),
          colors=dict(skin=(0.9, 0.68, 0.52), top=(0.32, 0.24, 0.2), pants=(0.26, 0.22, 0.2), boot=(0.24, 0.15, 0.09), belt=(0.25, 0.16, 0.08),
                      glove=(0.32, 0.21, 0.12), hair=(0.62, 0.2, 0.08), beard=(0.55, 0.18, 0.08))),
-    dict(name='Serena', alice_band=(0.18, 0.32, 0.72), overskirt=((0.15, 0.3, 0.68), (0.32, 0.5, 0.86), 30), cuffs=(0.18, 0.34, 0.74),
+    dict(name='Serena', patterns=dict(overskirt='serena_overskirt', tabard='serena_tabard'), alice_band=(0.18, 0.32, 0.72), overskirt=((0.15, 0.3, 0.68), (0.32, 0.5, 0.86), 30), cuffs=(0.18, 0.34, 0.74),
          tabard=(0.96, 0.96, 0.98), bandolier=True, belt_items=(('vial', -0.1), ('vial', -0.065), ('pouch', 0.09)),
          build='female', scale=0.95, head_scale=1.05, eye_style='fem', robe=True, sleeves='long', hair='long', staff='orb',
          eye=(0.38, 0.22, 0.12), boot_h=0.42,

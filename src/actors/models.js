@@ -211,7 +211,7 @@ function detailKind(n) {
   if (/_skin$|^Skin/i.test(n)) return 'skin';
   if (/_(boot|belt|glove)$|Leather|Strap|Boot|Belt|Glove/i.test(n)) return 'leather';
   if (/_metal$|Blade|Silver|Armor|Helmet|Iron|Steel/i.test(n)) return 'metal';
-  if (/_(top|pants|robe|dress|Cape|Robe|Dress|apron|vest|Lining|hat|Band|hatband|sash|ribbon)$|Cape|Frill|Velvet|Cloth/i.test(n)) return 'cloth';
+  if (/_(top|pants|robe|dress|Cape|Robe|Dress|apron|vest|Lining|hat|Band|hatband|sash|ribbon)$|Cape|Frill|Velvet|Cloth|_(Robe|Tabard|Overskirt)Tex$/i.test(n)) return 'cloth';
   return null;
 }
 
@@ -253,7 +253,7 @@ export class ModelLibrary {
     if (this._upgraded.has(m)) return this._upgraded.get(m);
     const n = m.name || '';
     let r = m;
-    const fabric = /_(top|pants|robe|dress|Cape|Robe|Dress|apron|vest|Lining|hat|Band|hatband)$|Cape|Frill|Fur|Velvet/i.test(n);
+    const fabric = /_(top|pants|robe|dress|Cape|Robe|Dress|apron|vest|Lining|hat|Band|hatband)$|Cape|Frill|Fur|Velvet|_(Robe|Tabard|Overskirt)Tex$/i.test(n);
     const hair = /_(hair|beard)$|Hair|Beard/i.test(n);
     const skin = /_skin$|^Skin/i.test(n);
     if (fabric || hair || skin) {
@@ -264,7 +264,8 @@ export class ModelLibrary {
       if (fabric) {
         p.sheen = 1.0;
         p.sheenRoughness = 0.55;
-        p.sheenColor = m.color.clone().lerp(new THREE.Color(1, 1, 1), 0.45);
+        // 模様の絵を貼った布は色が絵にあるので、つやは控えめな灰色に
+        p.sheenColor = m.map ? new THREE.Color(0.35, 0.35, 0.38) : m.color.clone().lerp(new THREE.Color(1, 1, 1), 0.45);
         p.roughness = Math.max(0.75, m.roughness);
       }
       if (hair) {

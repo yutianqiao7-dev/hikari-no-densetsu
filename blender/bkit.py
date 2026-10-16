@@ -113,6 +113,21 @@ class MB:
         M = Matrix.LocRotScale(Vector(loc), Euler(rot), Vector(scale))
         self._merge(tmp, m, sm if smooth is None else smooth, M, jitter, kw.get('seed', 0))
 
+    def poly_uv(self, verts, faces, uvs, m, smooth=True):
+        """UV（頂点ごと）付きで面を足す（模様のテクスチャを貼る布用）"""
+        uvl = self.bm.loops.layers.uv.get("UVMap") or self.bm.loops.layers.uv.new("UVMap")
+        mi = self._mi(m)
+        vs = [self.bm.verts.new(Vector(v)) for v in verts]
+        for f in faces:
+            try:
+                nf = self.bm.faces.new([vs[i] for i in f])
+            except ValueError:
+                continue
+            nf.material_index = mi
+            nf.smooth = smooth
+            for lp, i in zip(nf.loops, f):
+                lp[uvl].uv = uvs[i]
+
     def poly(self, verts, faces, m, smooth=False, loc=(0, 0, 0), rot=(0, 0, 0), scale=(1, 1, 1)):
         tmp = bmesh.new()
         vs = [tmp.verts.new(v) for v in verts]
