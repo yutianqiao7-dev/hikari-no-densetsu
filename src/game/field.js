@@ -166,7 +166,7 @@ export class Field {
     this.cam.yaw = rot + Math.PI;
     this.vel.set(0, 0, 0);
     this.hero.root.position.copy(this.pos);
-    this.hero.root.rotation.y = rot;
+    this.hero.root.rotation.set(0, rot, 0);
     this.resetFollowers();
     this.snapCamera();
   }
@@ -220,7 +220,7 @@ export class Field {
     if (leader !== this.hero) {
       this.hero.root.visible = false;
       leader.root.position.copy(this.pos);
-      leader.root.rotation.y = this.facing;
+      leader.root.rotation.set(0, this.facing, 0);
       leader.root.visible = show;
       leader.speed = 0;
       leader.stopOneShot(0.01);
@@ -229,7 +229,7 @@ export class Field {
       const p = this.pos.clone().addScaledVector(back, (i + 1) * 1.5);
       p.y = this.env.height(p.x, p.z);
       obj.root.position.copy(p);
-      obj.root.rotation.y = this.facing;
+      obj.root.rotation.set(0, this.facing, 0);
       obj.root.visible = show;
       if (!coffin) { obj.speed = 0; obj.stopOneShot(0.01); }
     });

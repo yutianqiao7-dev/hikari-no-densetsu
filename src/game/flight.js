@@ -315,7 +315,8 @@ export class Flight {
     this.landing = null;
     this.hint.classList.add('hidden');
     if (this.dome) this.dome.visible = false;
-    for (const h of this.riders()) h.stopOneShot(0.01);
+    // 竜の傾きをもらっていたので、まっすぐ立たせる（でないと地面に寝そべって歩く）
+    for (const h of this.riders()) { h.stopOneShot(0.01); h.root.rotation.set(0, this.heading, 0); }
     w.useMap(map.id);
     g.hud.buildBaseMap(w);
     f.setEnv(w.fieldEnv);
