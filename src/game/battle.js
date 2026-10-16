@@ -60,15 +60,17 @@ export class Battle {
       dir = V(bp.x - heroPos.x, 0, bp.z - heroPos.z).normalize();
       this.bigB = this.isBigKind(this.bossObj.kind);
       heroPos.copy(bp).addScaledVector(dir, this.bigB ? -12.5 * (this.bossObj.def.scale || 1.15) / 1.15 : -(6 + 1.2 * (this.bossObj.def.scale || 1)));
+      // ボスは置いたときの向きのままなので、勇者たちのほうへ向き直らせる
+      this.bossObj.root.rotation.y = Math.atan2(-dir.x, -dir.z);
     } else if (this.opts.symbol) {
       const sp = this.opts.symbol.root.position;
       dir = V(sp.x - heroPos.x, 0, sp.z - heroPos.z);
       if (dir.lengthSq() < 0.01) dir.set(Math.sin(f.facing), 0, Math.cos(f.facing));
       dir.normalize();
     } else dir = V(Math.sin(f.facing), 0, Math.cos(f.facing));
-    // 屋内のふつうの戦闘は、戦うあいだだけ壁を消して広い床の上で戦う（敵が重ならない）
+    // 屋内の戦闘は（ボス戦も）、戦うあいだだけ壁を消して広い床の上で戦う（敵が重ならない・4人が窮屈にならない）
     this.arena = null;
-    if (!f.inField && !boss) this.openArena(heroPos, dir);
+    if (!f.inField) this.openArena(heroPos, dir);
     const open = f.inField || !!this.arena;
     heroPos.y = env.height(heroPos.x, heroPos.z);
     this.dir = dir;
@@ -1099,7 +1101,7 @@ export class Battle {
     this.log.remove();
     if (this.enemyWin) this.enemyWin.remove();
     for (const e of this.enemies) {
-      if (e.m === this.f.boss || e.m === this.f.guardian) continue;
+      if (e.m === this.f.boss || e.m === this.f.guardian || e.m === this.f.ibossObj) continue;
       this.g.scene.remove(e.m.root);
     }
     if (this.opts.boss && result === 'win' && this.opts.boss !== 'dragon') this.bossObj.root.visible = false;
