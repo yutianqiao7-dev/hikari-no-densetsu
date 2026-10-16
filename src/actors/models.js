@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /**
  * キャラの素材の細かな質感（scripts/gen_textures.py の布・革・金属・髪・肌）。
@@ -206,6 +207,47 @@ export function addOutlines(root, skip) {
   }
 }
 
+/**
+ * 人型の部品（スキンメッシュ）を、同じ材質・同じ骨格どうしで 1 つのメッシュにまとめる。
+ * 見た目は同じで、描く回数（と輪郭線・影の回数）が部品の数から材質の数に減る。
+ * 持ちかえる武器や、まばたき・口の形をもつ部品はそのまま残す。
+ */
+const KEEP_PART = /_(Sword|Sheath|Shield|Staff|Axe|Spear|Eye[LR]|MouthIn|Face|Blush[LR]|Lashes)(_\d+)?$/;
+function mergeSkinned(root, name) {
+  root.updateMatrixWorld(true);
+  const groups = new Map();
+  root.traverse((o) => {
+    if (!o.isSkinnedMesh || o.userData.isOutline || Array.isArray(o.material)) return;
+    const g = o.geometry;
+    if (KEEP_PART.test(o.name) || (o.parent && KEEP_PART.test(o.parent.name)) || !g.index) return;
+    if (g.morphAttributes && Object.keys(g.morphAttributes).length) return;
+    const key = [o.material.uuid, o.skeleton.uuid, o.bindMatrix.elements.map((v) => v.toFixed(5)).join(','),
+      o.castShadow, o.receiveShadow, Object.keys(g.attributes).sort().join(',')].join('|');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(o);
+  });
+  let n = 0;
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    // 属性の型がそろっていないものはまとめない
+    const a0 = list[0].geometry.attributes;
+    const same = list.every((o) => Object.entries(o.geometry.attributes).every(([k, a]) =>
+      a0[k] && a.itemSize === a0[k].itemSize && a.normalized === a0[k].normalized && a.array.constructor === a0[k].array.constructor));
+    if (!same) continue;
+    const geo = mergeGeometries(list.map((o) => o.geometry), false);
+    if (!geo) continue;
+    const f = list[0];
+    const m = new THREE.SkinnedMesh(geo, f.material);
+    m.name = `${name}_Merged${n++}`;
+    m.castShadow = f.castShadow;
+    m.receiveShadow = f.receiveShadow;
+    m.bindMode = f.bindMode;
+    root.add(m);
+    m.bind(f.skeleton, f.bindMatrix);
+    for (const o of list) o.removeFromParent();
+  }
+}
+
 function detailKind(n) {
   if (/_(hair|beard)$|Hair|Beard/i.test(n)) return 'hair';
   if (/_skin$|^Skin/i.test(n)) return 'skin';
@@ -295,6 +337,8 @@ export class ModelLibrary {
     }
     this._upgraded = new Map();
     for (const t of Object.values(this.templates)) this.upgradeMaterials(t);
+    // 人型は、同じ材質の部品を 1 つにまとめて描く回数を減らす（スマホで軽く）
+    for (const [k, t] of Object.entries(this.templates)) if (!/^Mon_/.test(k)) mergeSkinned(t, k);
     // 人型は顔の描いた部品を除いて輪郭線をつける（モンスターは複製したあとに）
     for (const [k, t] of Object.entries(this.templates)) {
       if (!/^Mon_/.test(k)) addOutlines(t, /_(Face|Eye[LR]|Blush[LR]|Lashes|MouthIn)$/);
@@ -400,8 +444,14 @@ export class ModelLibrary {
     for (const [k, clip] of Object.entries(this.clips)) actions[k] = mixer.clipAction(clip);
     const parts = {};
     const byName = {};
+    // 画面の外のキャラは描かない：骨で動いても はみ出さない大きさの球（体のまわり 1.9m）で判定
+    const invRoot = root.matrixWorld.clone().invert();
     root.traverse((o) => {
-      if (o.isMesh) o.frustumCulled = false;
+      if (o.isMesh) {
+        const rel = invRoot.clone().multiply(o.matrixWorld).invert();
+        o.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.95, 0).applyMatrix4(rel), 1.9);
+        o.frustumCulled = true;
+      }
       byName[o.name] = o;
       if (o !== root && o.name.startsWith(name + '_') && !o.userData.isOutline) {
         const key = o.name.slice(name.length + 1);

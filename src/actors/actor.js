@@ -6,11 +6,48 @@ export { angDiff };
 /** スキニングされた人型。Idle/Walk/Run を速度でブレンドし、単発アクションも再生する */
 const HOLD_BEND = 1.2; // blender/build_characters.py と同じ
 
+/**
+ * 人型の見え方の手かげん（スマホで軽く）。毎フレーム、描く前に呼ぶ。
+ * - 画面に映っていなくて近くにもいないキャラは、動きの計算を休む
+ * - 遠くのキャラは輪郭線と影を省く（距離は画質の設定 olDist / shDist）
+ */
+const ALL = new Set();
+const _frus = new THREE.Frustum(), _pm = new THREE.Matrix4(), _sp = new THREE.Sphere(), _wp = new THREE.Vector3();
+export function updateHumanoidLOD(camera, q) {
+  _pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  _frus.setFromProjectionMatrix(_pm);
+  const ol2 = (q.olDist || 1e4) ** 2, sh2 = (q.shDist || 1e4) ** 2;
+  for (const h of ALL) {
+    if (!h.root.parent) { ALL.delete(h); continue; }
+    h.root.getWorldPosition(_wp);
+    const d2 = _wp.distanceToSquared(camera.position);
+    _sp.center.copy(_wp).y += 1.0;
+    _sp.radius = 2.4 * h.root.scale.x;
+    h.sleep = d2 > 36 && !_frus.intersectsSphere(_sp);
+    const ol = d2 < ol2;
+    if (ol !== h.olOn) {
+      h.olOn = ol;
+      for (const [a, b] of h.outlinePairs) b.visible = a.visible && ol;
+    }
+    const sh = d2 < sh2;
+    if (sh !== h.shOn) {
+      h.shOn = sh;
+      for (const m of h.casters) m.castShadow = sh;
+    }
+  }
+}
+
 export class Humanoid {
   constructor(lib, model) {
     const h = lib.humanoid(model);
     this.outlinePairs = h.outlinePairs || [];
     this.root = h.root;
+    this.olOn = true;
+    this.shOn = true;
+    this.sleep = false;
+    this.casters = [];
+    this.root.traverse((o) => { if (o.isMesh && o.castShadow) this.casters.push(o); });
+    ALL.add(this);
     this.mixer = h.mixer;
     this.retarget = h.retarget;
     this.actions = h.actions;
@@ -115,6 +152,8 @@ export class Humanoid {
   }
 
   update(dt) {
+    // 画面の外で遠いときは動きの計算を休む（時間だけ進める）
+    if (this.sleep) { this.faceT = (this.faceT || 0) + dt; return; }
     const s = this.speed;
     const A = this.actions;
     const wWalk = THREE.MathUtils.clamp(s / 1.6, 0, 1) * (1 - THREE.MathUtils.clamp((s - 3.2) / 1.6, 0, 1));
@@ -130,7 +169,7 @@ export class Humanoid {
     if (hb) hb.quaternion.copy(this.holdBase);
     this.mixer.update(dt);
     if (this.retarget) this.retarget.update();
-    for (const [a, b] of this.outlinePairs) b.visible = a.visible;
+    for (const [a, b] of this.outlinePairs) b.visible = a.visible && this.olOn;
     this.updateFace(dt);
     if (hb) { this.holdBase.copy(hb.quaternion); hb.quaternion.multiply(this.holdQ); }
   }

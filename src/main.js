@@ -18,6 +18,7 @@ import { fieldMenu, inn, shop } from './game/menu.js';
 import { ISLANDS } from './world/world.js';
 import { CUT, setTextureQuality } from './world/surfaces.js';
 import { toonify, OUTLINE_PX, OUTLINE_RES } from './actors/models.js';
+import { updateHumanoidLOD } from './actors/actor.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -214,6 +215,7 @@ class Game {
     this.updateSpeakers();
     this.renderer.r.getDrawingBufferSize(OUTLINE_RES.value);
     OUTLINE_PX.value = 1.6 * this.renderer.r.getPixelRatio();
+    updateHumanoidLOD(this.camera, this.q);
     this.renderer.render(this.scene, this.camera, this.t);
     // 開発用：画面を画像として送る（?dev のとき window.cap(名前)）
     if (window.__capName) {

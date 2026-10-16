@@ -11,9 +11,9 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 export const NO_AO = new Set();
 
 export const QUALITY = {
-  ultra: { label: '最高', pixelRatio: 2, shadow: 4096, shadowRange: 70, msaa: 4, bloom: true, ao: true, grass: 90000, grassRadius: 56, flowers: 6000, lodNear: 150, far: 1100 },
-  high: { label: '高', pixelRatio: 1.5, shadow: 2048, shadowRange: 55, msaa: 4, bloom: true, grass: 45000, grassRadius: 42, flowers: 3000, lodNear: 110, far: 850 },
-  low: { label: '軽量', pixelRatio: 1, shadow: 1024, shadowRange: 40, msaa: 0, bloom: false, grass: 14000, grassRadius: 28, flowers: 1000, lodNear: 70, far: 600 },
+  ultra: { label: '最高', pixelRatio: 2, shadow: 4096, shadowRange: 70, msaa: 4, bloom: true, ao: true, grass: 90000, grassRadius: 56, flowers: 6000, lodNear: 150, far: 1100, olDist: 90, shDist: 90 },
+  high: { label: '高', pixelRatio: 1.5, shadow: 2048, shadowRange: 55, msaa: 4, bloom: true, grass: 45000, grassRadius: 42, flowers: 3000, lodNear: 110, far: 850, olDist: 26, shDist: 32 },
+  low: { label: '軽量', pixelRatio: 1, shadow: 1024, shadowRange: 40, msaa: 0, bloom: false, grass: 14000, grassRadius: 28, flowers: 1000, lodNear: 70, far: 600, olDist: 15, shDist: 18 },
 };
 
 export function loadQualityKey() {
