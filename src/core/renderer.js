@@ -31,8 +31,8 @@ const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
     uTime: { value: 0 },
-    uSaturation: { value: 1.14 },
-    uContrast: { value: 1.04 },
+    uSaturation: { value: 1.04 },
+    uContrast: { value: 1.0 },
     uTint: { value: new THREE.Vector3(1, 1, 1) },
     uVignette: { value: 0.32 },
     uDesat: { value: 0 },
@@ -59,6 +59,8 @@ const GradeShader = {
       col = mix(vec3(l), col, uSaturation * (1.0 - uDesat));
       col = (col - 0.18) * uContrast + 0.18;
       col = max(col, 0.0);
+      // いちばん暗いところを少し持ち上げて、やわらかい絵に（ドラクエ10風）
+      col = col * 0.97 + vec3(0.010, 0.011, 0.016);
       vec2 q = vUv - 0.5;
       float v = 1.0 - dot(q, q) * uVignette * 2.2;
       col *= clamp(v, 0.0, 1.0);
@@ -75,7 +77,7 @@ export class Renderer {
     r.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pixelRatio));
     r.setSize(window.innerWidth, window.innerHeight, false);
     r.shadowMap.enabled = true;
-    r.shadowMap.type = THREE.PCFShadowMap;
+    r.shadowMap.type = THREE.PCFSoftShadowMap;    // ふちのやわらかい影
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.0;
     r.outputColorSpace = THREE.SRGBColorSpace;
@@ -90,7 +92,7 @@ export class Renderer {
     this.renderPass = new RenderPass(null, null);
     this.composer.addPass(this.renderPass);
     if (q.bloom) {
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.38, 0.45, 3.2);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.45, 0.6, 2.4);
       this.composer.addPass(this.bloom);
     }
     this.grade = new ShaderPass(GradeShader);

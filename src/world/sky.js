@@ -7,7 +7,7 @@ const lerpC = (a, b, t) => a.clone().lerp(b, t);
 // 時間帯ごとの色（リニア空間）
 const C = (r, g, b) => new THREE.Color(r, g, b);
 const FOG_DAY = C(0.56, 0.70, 0.90), FOG_DUSK = C(0.95, 0.56, 0.36), FOG_NIGHT = C(0.05, 0.075, 0.16);
-const SUN_DAY = C(1.0, 0.95, 0.86), SUN_DUSK = C(1.0, 0.55, 0.28), MOON = C(0.62, 0.74, 1.0);
+const SUN_DAY = C(1.0, 0.93, 0.8), SUN_DUSK = C(1.0, 0.55, 0.28), MOON = C(0.62, 0.74, 1.0);
 const HEMI_SKY_DAY = C(0.62, 0.75, 1.0), HEMI_SKY_NIGHT = C(0.36, 0.46, 0.8);
 const HEMI_GND_DAY = C(0.36, 0.33, 0.22), HEMI_GND_NIGHT = C(0.14, 0.16, 0.22);
 
@@ -31,7 +31,7 @@ export class SkySystem {
     u.rayleigh.value = 1.4;
     u.mieCoefficient.value = 0.004;
     u.mieDirectionalG.value = 0.72;
-    u.cloudCoverage.value = 0.42;
+    u.cloudCoverage.value = 0.5;
     u.cloudDensity.value = 0.55;
     u.cloudScale.value = 0.00022;
     u.cloudSpeed.value = 0.00003;
@@ -84,6 +84,7 @@ export class SkySystem {
     sun.shadow.bias = -0.0003;
     sun.shadow.normalBias = 0.035;
     sun.shadow.radius = 2;
+    sun.shadow.intensity = 0.78;      // 影を真っ黒にしない（空の光が回りこむ）
     scene.add(sun, sun.target);
     this.sun = sun;
 

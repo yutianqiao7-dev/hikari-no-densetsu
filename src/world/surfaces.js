@@ -29,6 +29,7 @@ const TEX = {
 let texLo = false;
 /** 軽量設定では半分の解像度のテクスチャを使う */
 export function setTextureQuality(lo) { texLo = lo; }
+export function isTextureLow() { return texLo; }
 const texCache = {};
 function texSet(kind) {
   if (texCache[kind]) return texCache[kind];

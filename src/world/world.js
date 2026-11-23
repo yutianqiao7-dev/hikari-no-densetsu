@@ -90,7 +90,7 @@ export class World {
     let tMesh = null;
     gscene.traverse((o) => { if (!tMesh && /^Terrain/.test(o.name)) tMesh = o; });
     const tMeshReal = tMesh.isMesh ? tMesh : tMesh.children.find((c) => c.isMesh);
-    const terrain = buildTerrain(hf, tMeshReal, this.shared);
+    const terrain = buildTerrain(hf, tMeshReal, this.shared, id);
     const offU = { value: new THREE.Vector2() };
     const uv = hf.uvParams;
     const map = { id, isl, hf, terrain, data, markers: data.markers, windows: [], glow: [], lava: [], offU, areas: id === 'main' ? AREAS : {} };

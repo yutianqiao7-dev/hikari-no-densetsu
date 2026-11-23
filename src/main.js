@@ -196,7 +196,7 @@ class Game {
     if (this.mode !== 'flight') this.sky.update(dt, focus, this.camera);
     // 時間帯の色調（夜は青く・彩度を落とす、夕方は暖色）
     const gu = this.renderer.grade.uniforms, sk = this.sky;
-    gu.uSaturation.value = 1.18 - sk.night * 0.4 + sk.dusk * 0.05;
+    gu.uSaturation.value = 1.06 - sk.night * 0.35 + sk.dusk * 0.05;
     gu.uVignette.value = 0.32;
     gu.uTint.value.set(1 - sk.night * 0.2 + sk.dusk * 0.06, 1 - sk.night * 0.07, 1 + sk.night * 0.16 - sk.dusk * 0.08);
     if (this.world.interiors.current) this.applyInteriorLighting();

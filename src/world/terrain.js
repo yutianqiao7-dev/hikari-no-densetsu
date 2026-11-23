@@ -1,5 +1,48 @@
 import * as THREE from 'three';
 import { NOISE } from './glsl.js';
+import { isTextureLow } from './surfaces.js';
+
+/**
+ * 地面の手描きテクスチャ（Gemini で描いた絵 → scripts/process_gemini_tex.py）を 1 つの束（配列テクスチャ）にまとめる。
+ * 並び：0 草地 / 1 森の草地 / 2 土 / 3 砂 / 4 雪 / 5 溶岩 / 6 岩
+ */
+const GROUND = ['g_grass', 'g_grass2', 'g_dirt', 'g_sand', 'g_snow', 'g_lava', 'rock'];
+let groundSet = null;
+function groundTextures() {
+  if (groundSet) return groundSet;
+  const S = isTextureLow() ? 512 : 1024;
+  const mk = (srgb) => {
+    const t = new THREE.DataArrayTexture(new Uint8Array(S * S * 4 * GROUND.length).fill(128), S, S, GROUND.length);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.magFilter = THREE.LinearFilter;
+    t.generateMipmaps = true;
+    t.anisotropy = 8;
+    t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    t.needsUpdate = true;
+    return t;
+  };
+  groundSet = { a: mk(true), n: mk(false), ready: false };
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  const base = `${import.meta.env.BASE_URL}assets/tex/`;
+  (async () => {
+    for (const [key, suf] of [['a', 'a'], ['n', 'n']]) {
+      const data = groundSet[key].image.data;
+      for (let i = 0; i < GROUND.length; i++) {
+        const blob = await (await fetch(`${base}${GROUND[i]}_${suf}.jpg`)).blob();
+        const bmp = await createImageBitmap(blob);
+        ctx.drawImage(bmp, 0, 0, S, S);
+        data.set(ctx.getImageData(0, 0, S, S).data, i * S * S * 4);
+      }
+      groundSet[key].needsUpdate = true;
+    }
+    groundSet.ready = true;
+  })().catch((e) => console.warn('ground textures', e));
+  return groundSet;
+}
+const BIOME = { main: 0, desert: 1, ice: 2, volcano: 3, dark: 4 };
 
 /** Blender で作った地形の高さマップ。三角形分割と一致した厳密な高さを返す */
 export class Heightfield {
@@ -40,7 +83,7 @@ export class Heightfield {
 /**
  * Blender の地形メッシュから頂点カラーを取り出し、高さマップと同じ並びのテクスチャとジオメトリを作る
  */
-export function buildTerrain(hf, gltfTerrainMesh, sharedIn = null) {
+export function buildTerrain(hf, gltfTerrainMesh, sharedIn = null, biome = 'main') {
   const W = hf.w;
   const colors = new Float32Array(W * W * 3).fill(0.3);
   const src = gltfTerrainMesh.geometry;
@@ -106,49 +149,78 @@ export function buildTerrain(hf, gltfTerrainMesh, sharedIn = null) {
   };
 
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0 });
+  const gt = groundTextures();
+  const bio = BIOME[biome] ?? 0;
+  mat.customProgramCacheKey = () => 'terrain-gt-' + bio;
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, shared);
+    sh.uniforms.uGA = { value: gt.a };
+    sh.uniforms.uGN = { value: gt.n };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nvarying vec3 vWNrm;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWNrm = normalize(mat3(modelMatrix) * objectNormal);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vWPos;\nvarying vec3 vWNrm;\nuniform float uTime, uDay;\nuniform vec2 uWind;\n${NOISE}`)
+      .replace('#include <common>', `#include <common>\nvarying vec3 vWPos;\nvarying vec3 vWNrm;\nuniform float uTime, uDay;\nuniform vec2 uWind;\nuniform highp sampler2DArray uGA, uGN;\nvec3 gGroundN = vec3(0.0);\n#define BIOME ${bio}\n${NOISE}
+        // 手描きテクスチャ：同じ絵の大きさ違いを重ねて、くり返しを目立たなくする（平均がおよそ 1）
+        vec3 gTex(float L, vec2 uv) {
+          vec3 a = texture(uGA, vec3(uv, L)).rgb;
+          vec3 b = texture(uGA, vec3(uv * 0.23 + 0.37, L)).rgb;
+          return a * 2.0 * mix(vec3(1.0), b * 2.0, 0.45);
+        }
+        vec3 gNrm(float L, vec2 uv) {
+          vec3 a = texture(uGN, vec3(uv, L)).xyz * 2.0 - 1.0;
+          vec3 b = texture(uGN, vec3(uv * 0.23 + 0.37, L)).xyz * 2.0 - 1.0;
+          return vec3(a.xy + b.xy * 0.5, a.z);
+        }`)
       .replace('#include <color_fragment>', /* glsl */`
         #include <color_fragment>
         vec2 wp = vWPos.xz;
-        float n1 = vnoise(wp * 0.45), n2 = vnoise(wp * 2.3), n3 = fbm3(wp * 0.035);
-        float detail = 0.80 + 0.24 * n1 + 0.10 * n2 + 0.14 * (n3 - 0.5);
-        diffuseColor.rgb *= detail;
-        float lush = smoothstep(0.5, 0.78, n3);
-        float isGrass = smoothstep(0.0, 0.06, diffuseColor.g - max(diffuseColor.r, diffuseColor.b));
-        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.12, 1.08, 0.72), lush * isGrass * 0.6);
-        float tgl = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
-        diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(tgl), diffuseColor.rgb, 0.95), isGrass);
-        // 土の道：小石・湿ったまだら
-        float dirt = smoothstep(0.0, 0.06, diffuseColor.r - diffuseColor.g) * (1.0 - smoothstep(0.55, 0.8, diffuseColor.b / max(diffuseColor.r, 0.01)));
-        if (dirt > 0.01) {
-          float peb = smoothstep(0.86, 0.93, vnoise(wp * 16.0)) * smoothstep(0.3, 0.6, vnoise(wp * 2.0));
-          float peb2 = smoothstep(0.86, 0.92, vnoise(wp * 23.0 + 7.0));
-          float damp = smoothstep(0.45, 0.75, fbm3(wp * 0.25));
-          float grain = vnoise(wp * 7.0) * 0.5 + vnoise(wp * 31.0) * 0.5;
-          vec3 dc = diffuseColor.rgb * (1.0 - damp * 0.2) * (0.88 + grain * 0.2);
-          dc = mix(dc, dc * 1.35 + 0.03, peb * 0.55);
-          dc = mix(dc, dc * 0.6, peb2 * 0.45);
-          diffuseColor.rgb = mix(diffuseColor.rgb, dc, dirt);
+        // --- 地面の種類の重み（Blender で塗った場所の色から） ---
+        vec3 vc = diffuseColor.rgb;
+        float mnc = min(vc.r, min(vc.g, vc.b));
+        float lumc = dot(vc, vec3(0.3, 0.59, 0.11));
+        float wSnow = max(smoothstep(0.45, 0.7, mnc), smoothstep(0.12, 0.3, vc.b - vc.r));
+        float wGrass = smoothstep(0.0, 0.04, vc.g - max(vc.r, vc.b)) * (1.0 - wSnow);
+        float wSand = smoothstep(0.32, 0.5, vc.r) * smoothstep(0.2, 0.35, vc.g) * (1.0 - wSnow) * (1.0 - wGrass);
+        float wDark = smoothstep(0.05, 0.015, lumc) * (1.0 - wSand) * (1.0 - wGrass);
+        float wDirt = max(0.0, 1.0 - wSnow - wGrass - wSand - wDark);
+        float g2 = smoothstep(0.3, 0.16, vc.g) * 0.8 + smoothstep(0.55, 0.8, fbm3(wp * 0.03)) * 0.2;
+        #if BIOME == 3
+          float darkL = 5.0;
+        #else
+          float darkL = 2.0;
+        #endif
+        vec3 tex = vec3(0.0);
+        vec3 gn = vec3(0.0);
+        if (wGrass > 0.001) {
+          vec2 uv = wp / 3.2;
+          vec3 t = mix(gTex(0.0, uv), gTex(1.0, uv * 1.1), g2);
+          tex += t * wGrass;
+          gn += mix(gNrm(0.0, uv), gNrm(1.0, uv * 1.1), g2) * wGrass;
         }
+        if (wDirt > 0.001) { vec2 uv = wp / 3.6; tex += gTex(2.0, uv) * wDirt; gn += gNrm(2.0, uv) * wDirt; }
+        if (wSand > 0.001) { vec2 uv = wp / 4.6; tex += gTex(3.0, uv) * wSand; gn += gNrm(3.0, uv) * wSand; }
+        if (wSnow > 0.001) { vec2 uv = wp / 5.0; tex += gTex(4.0, uv) * wSnow; gn += gNrm(4.0, uv) * wSnow; }
+        if (wDark > 0.001) { vec2 uv = wp / 4.0; tex += gTex(darkL, uv) * wDark; gn += gNrm(darkL, uv) * wDark; }
+        diffuseColor.rgb = vc * tex;
+        gGroundN = gn;
+        // 草地：ところどころ日なたっぽく明るい黄緑（大きなまだら）
+        float n3 = fbm3(wp * 0.035);
+        float lush = smoothstep(0.5, 0.78, n3);
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.1, 1.07, 0.78), lush * wGrass * 0.55);
+        diffuseColor.rgb *= 0.93 + 0.14 * n3;
         // 急斜面は岩肌（三平面投影の岩のかたまりと地層）。雪の積もった所は残す
         float steep = 1.0 - smoothstep(0.55, 0.86, vWNrm.y);
         if (steep > 0.01) {
           vec3 an = abs(vWNrm);
           vec2 tp = an.x > an.z ? vWPos.zy : vWPos.xy;
-          float f1 = fbm3(tp * 0.22), f2 = fbm3(tp * 0.9 + 4.0), f3 = vnoise(tp * 3.7);
-          float strata = sin(vWPos.y * 1.6 + f1 * 7.0) * 0.5 + 0.5;
-          vec3 rockC = mix(vec3(0.28, 0.26, 0.25), vec3(0.56, 0.52, 0.47), strata * 0.45 + f2 * 0.55) * (0.82 + f3 * 0.32);
-          // 砂・雪・火山岩など、その場所の色に寄せた岩肌にする
-          vec3 tintC = diffuseColor.rgb * (0.72 + 0.55 * (strata * 0.45 + f2 * 0.55)) * (0.85 + f3 * 0.3);
-          rockC = mix(rockC, tintC, 0.72);
-          rockC = mix(rockC, rockC * vec3(0.85, 0.95, 0.75), smoothstep(0.6, 0.8, f1) * 0.5);
-          float snowy = smoothstep(0.62, 0.8, min(diffuseColor.r, diffuseColor.b));
+          float f1 = fbm3(tp * 0.22);
+          // 岩肌の手描きテクスチャ（横から 2 方向の投影）。色はその場所の色に寄せる
+          vec3 rt = gTex(6.0, tp / 6.0);
+          vec3 rockBase = mix(vec3(0.4, 0.38, 0.36), vc * 1.15 + 0.03, 0.62);
+          vec3 rockC = rockBase * rt;
+          rockC = mix(rockC, rockC * vec3(0.85, 0.95, 0.75), smoothstep(0.6, 0.8, f1) * 0.4);
+          float snowy = wSnow;
           diffuseColor.rgb = mix(diffuseColor.rgb, rockC, steep * 0.92 * (1.0 - snowy * 0.75));
         }
         // 濡れた砂浜
@@ -161,15 +233,15 @@ export function buildTerrain(hf, gltfTerrainMesh, sharedIn = null) {
       .replace('#include <normal_fragment_maps>', /* glsl */`
         #include <normal_fragment_maps>
         {
-          vec2 wq = vWPos.xz * 1.3;
-          float e = 0.08;
-          float b0 = vnoise(wq), bx = vnoise(wq + vec2(e, 0.0)), bz = vnoise(wq + vec2(0.0, e));
-          vec3 bump = vec3(b0 - bx, 0.0, b0 - bz) * 2.2;
+          // 地面の凹凸：テクスチャの法線（真上から貼っているので x→x、y→z）
           float stp = 1.0 - smoothstep(0.55, 0.86, vWNrm.y);
+          vec3 bump = vec3(gGroundN.x, 0.0, -gGroundN.y) * 0.9 * (1.0 - stp);
           if (stp > 0.01) {
-            vec2 rq = vWPos.xy * 0.5 + vWPos.zy * 0.5;
-            float r0 = fbm3(rq), rx = fbm3(rq + vec2(0.06, 0.0)), ry = fbm3(rq + vec2(0.0, 0.06));
-            bump += vec3(r0 - rx, (r0 - ry) * 0.5, r0 - ry) * 9.0 * stp;
+            vec3 an = abs(vWNrm);
+            vec2 tp = an.x > an.z ? vWPos.zy : vWPos.xy;
+            vec3 rn = gNrm(6.0, tp / 6.0);
+            vec3 side = an.x > an.z ? vec3(0.0, rn.y, rn.x) : vec3(rn.x, rn.y, 0.0);
+            bump += side * 1.4 * stp;
           }
           normal = normalize(normal + (viewMatrix * vec4(bump, 0.0)).xyz);
         }

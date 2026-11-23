@@ -94,7 +94,9 @@ float toonStep(float x) {
 vec3 toonCol(float x) {
   ${soft ? `// 肌：影は赤みのある色ではっきり
   float k = smoothstep(0.22, 0.3, x);
-  return mix(vec3(0.72, 0.5, 0.45), vec3(1.0), k);` : 'return vec3(toonStep(x));'}
+  return mix(vec3(0.72, 0.5, 0.45), vec3(1.0), k);` : (char ? 'return vec3(toonStep(x));' : `// 背景（ドラクエ10風）：段にせず、やわらかく回りこむ光。影の面も明るめで、少し青みに
+  float k = smoothstep(-0.05, 0.75, x);
+  return mix(vec3(0.5, 0.53, 0.62), vec3(1.0), k);`)}
 }
 float toonNL(vec3 n, float dl) {
   ${soft ? `// 顔は奥側だけがうっすら暗くなるように（半分ランバート）
