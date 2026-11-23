@@ -29,6 +29,8 @@ JOBS = {
     'roof': ('tex_roof', 8.0, 1.0, 0.8),
     'rock': ('tex_rock', 8.0, 1.0, 0.9),
     'flagstone': ('tex_cobble', 8.0, 1.0, 0.85),
+    'tiles': ('tex_tiles', 4.0, 0.6, 0.45),
+    'fabric': ('tex_carpet', 2.5, 0.6, 0.95),
     # 地面（terrain.js）
     'g_grass': ('tex_grass', 3.0, 0.6, 0.95),
     'g_grass2': ('tex_grass2', 3.0, 0.6, 0.95),
@@ -43,6 +45,8 @@ JOBS = {
 # 出力名: (大きなむらを取る強さ, 明るさの差の強さ, 色の差を残す割合)
 OPT = {
     'plaster': (1.0, 0.45, 0.2),
+    'fabric': (0.85, 0.45, 0.3),
+    'tiles': (0.6, 0.8, 0.3),
     'g_grass': (1.0, 0.9, 0.25),
     'g_grass2': (1.0, 0.9, 0.25),
     'g_snow': (1.0, 0.8, 0.3),

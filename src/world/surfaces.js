@@ -24,7 +24,8 @@ const TEX = {
   planks: { size: 2.0, normal: 0.9 },
   plaster: { size: 2.5, normal: 0.9 },
   rock: { size: 5.0, normal: 1.0 },
-  fabric: { size: 0.6, normal: 0.7 },
+  fabric: { size: 1.4, normal: 0.6 },
+  tiles: { size: 4.0, normal: 0.6 },
 };
 let texLo = false;
 /** 軽量設定では半分の解像度のテクスチャを使う */
@@ -122,7 +123,9 @@ function kindOf(name) {
 
 export function enhanceSurface(mat, heightTex, uvParams, cut = false, offU = null) {
   const off = offU || { value: new THREE.Vector2() };
-  const kind = kindOf(mat.name || '') || (cut ? 'none' : null);
+  let kind = kindOf(mat.name || '') || (cut ? 'none' : null);
+  // 室内（お城など）の石の床は、磨いた四角いタイル。村の広場は石畳のまま
+  if (cut && mat.name === 'StoneFloor') kind = 'tiles';
   if (!kind || mat.userData.enhanced) return;
   mat.userData.enhanced = true;
   const T = TEX[kind];
