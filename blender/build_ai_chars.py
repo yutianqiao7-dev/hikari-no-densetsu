@@ -29,7 +29,9 @@ AI_CHARS = {
         file='hero.glb', center=(0.03, -0.05), sole=-0.494, height=1.74, x_offset=-2.0,
         crown=0.494, deform_cape=True,
         # 剣のそばに残った背景（ピンク）を消す：(x0, x1, z0, z1)
-        purge=((0.21, 0.46, -0.53, -0.27, 'all'), (-0.12, 0.0, 0.28, 0.45, 'pink'), (0.03, 0.14, 0.4, 0.52, 'pink')),
+        # AI の剣（にじんで黒っぽい）と、そばの背景の残りを消して、作った剣に持ちかえる
+        purge=((0.26, 0.47, -0.53, 0.205, 'all'), (-0.12, 0.0, 0.28, 0.45, 'pink'), (0.03, 0.14, 0.4, 0.52, 'pink')),
+        sword=dict(bone='hand.L', length=0.92),
         face=dict(ref='hero.jpg', ref_eyes=((415.0, 178.75), (466.25, 178.75)),
                   eyes=((-0.01, 0.37), (0.042, 0.37)), low=0.73, chin=1.0, top=-0.55, ref_mouth=(445.0, 220.0)),
         bones={
@@ -480,6 +482,71 @@ def build_ai(name, spec):
     return arm_ob, ob
 
 
+def build_sword(name, arm_ob, spec):
+    """剣を作って手の骨につける（刃は手の先の向き＝腕を下ろすと真下）。戦いのときだけ見せる（Hero_Sword）"""
+    from bkit import MB, mat
+    sw = spec.get('sword')
+    if not sw:
+        return None
+    b = arm_ob.data.bones[sw['bone']]
+    h, t = Vector(b.head_local), Vector(b.tail_local)
+    d = (t - h).normalized()
+    # 刃の平らな面の向き：体の前後（y）に垂直
+    side = d.cross(Vector((0, 1, 0))).normalized()
+    fwd = side.cross(d).normalized()
+    grip_c = h + (t - h) * 0.55
+    L = sw['length']
+    m_blade = mat("Blade", (0.86, 0.88, 0.92), 0.22, 1.0)
+    m_gold = mat("Gold", (1.0, 0.78, 0.25), 0.3, 1.0)
+    m_grip = mat("Leather", (0.32, 0.18, 0.1), 0.8)
+    m_gem = mat("Emerald", (0.1, 0.85, 0.4), 0.1, emit=(0.1, 0.9, 0.4), emit_strength=0.6)
+    mb = MB()
+
+    def P(a, s_, f_):
+        return grip_c + d * a + side * s_ + fwd * f_
+    # 握り（革巻き）・つか頭・つば・刃
+    mb.tube([P(-0.11, 0, 0), P(0.1, 0, 0)], [0.018, 0.018], m_grip, seg=10)
+    for k in range(6):
+        a = -0.1 + k * 0.04
+        mb.tube([P(a, 0, 0), P(a + 0.012, 0, 0)], [0.021, 0.021], m_grip, seg=10)
+    mb.add('ico', m_gold, loc=tuple(P(-0.135, 0, 0)), r=0.03, sub=2)
+    g0 = 0.12
+    mb.tube([P(g0, -0.13, 0), P(g0 - 0.01, -0.05, 0), P(g0, 0, 0), P(g0 - 0.01, 0.05, 0), P(g0, 0.13, 0)],
+            [0.014, 0.02, 0.026, 0.02, 0.014], m_gold, seg=10)
+    for s_ in (-1, 1):
+        mb.add('ico', m_gold, loc=tuple(P(g0 + 0.005, s_ * 0.14, 0)), r=0.02, sub=1)
+    mb.add('ico', m_gem, loc=tuple(P(g0, 0, -0.022)), r=0.016, sub=1)
+    mb.add('ico', m_gem, loc=tuple(P(g0, 0, 0.022)), r=0.016, sub=1)
+    # 刃：根元から先へ少し細くなり、先はとがる。中央に溝（両面）
+    n = 10
+    W0, W1, T = 0.036, 0.028, 0.008
+    verts, faces = [], []
+    for i in range(n + 1):
+        a = g0 + 0.02 + (L - 0.12) * i / n
+        w = W0 + (W1 - W0) * i / n
+        for (s_, f_) in ((-w, 0), (0, T), (w, 0), (0, -T)):
+            verts.append(tuple(P(a, s_, f_)))
+    tip = len(verts)
+    verts.append(tuple(P(g0 + 0.02 + L - 0.12 + 0.1, 0, 0)))
+    for i in range(n):
+        for k in range(4):
+            a0, a1 = i * 4 + k, i * 4 + (k + 1) % 4
+            faces.append((a0, a1, a1 + 4, a0 + 4))
+    for k in range(4):
+        faces.append((n * 4 + k, n * 4 + (k + 1) % 4, tip))
+    faces.append((3, 2, 1, 0))
+    mb.poly(verts, faces, m_blade, smooth=False)
+    for f_ in (-1, 1):
+        mb.tube([P(g0 + 0.05, 0, f_ * T * 0.75), P(g0 + L * 0.7, 0, f_ * T * 0.75)], [0.005, 0.003], m_gold, seg=6)
+    ob = mb.build(name + "_Sword", COLL)
+    g_ = ob.vertex_groups.new(name=sw['bone'])
+    g_.add(list(range(len(ob.data.vertices))), 1.0, 'REPLACE')
+    ob.parent = arm_ob
+    md = ob.modifiers.new("Armature", 'ARMATURE')
+    md.object = arm_ob
+    return ob
+
+
 def face_frame(f):
     L3, R3 = Vector(f['eyes'][0]), Vector(f['eyes'][1])
     e3 = R3 - L3
@@ -675,6 +742,7 @@ def main():
         arm_ob, ob = r
         skin(arm_ob, ob)
         add_face_morphs(name, arm_ob, ob, spec)
+        build_sword(name, arm_ob, spec)
         arm_ob.location = (spec['x_offset'], 0, 0)
         print("AI character", name, "faces", len(ob.data.polygons))
     if scene_link:
