@@ -47,6 +47,7 @@ export function createWater(hf, heightTex, sky) {
       uniform vec3 uSunDir, uSunColor, uZenith, uHorizon;
       varying vec3 vW;
       ${NOISE}
+      float t0(float t) { return t * 0.13; }
       float terrainH(vec2 p) {
         vec2 g = (p + uHF.x) / uHF.y;
         if (g.x < 0.0 || g.y < 0.0 || g.x > uHF.z - 1.0 || g.y > uHF.z - 1.0) return -14.0;
@@ -75,16 +76,19 @@ export function createWater(hf, heightTex, sky) {
         float depth = max(0.0, vW.y - th);
         vec3 V = normalize(cameraPosition - vW);
         float dist = length(cameraPosition - vW);
-        vec2 g = waveGrad(p, uTime) * mix(1.0, 0.2, smoothstep(40.0, 420.0, dist));
+        // 波の凹凸はひかえめに（ドラクエ10風のおだやかで澄んだ水）
+        vec2 g = waveGrad(p, uTime) * mix(0.6, 0.15, smoothstep(40.0, 420.0, dist));
         vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
         float ndv = max(dot(n, V), 0.0);
-        float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
+        float fres = (0.02 + 0.98 * pow(1.0 - ndv, 5.0)) * 0.75;
         vec3 R = reflect(-V, n);
-        vec3 skyc = mix(uHorizon, uZenith, smoothstep(-0.05, 0.45, R.y));
+        // 映る空は青寄りに（地平線の白っぽさで水がくすまないように）
+        vec3 skyc = mix(mix(uHorizon, uZenith, 0.45), uZenith, smoothstep(-0.05, 0.45, R.y));
 
-        vec3 deep = vec3(0.01, 0.075, 0.16);
-        vec3 mid = vec3(0.02, 0.2, 0.3);
-        vec3 shallow = vec3(0.08, 0.5, 0.46);
+        // 明るい青緑（浅いほどエメラルドに）
+        vec3 deep = vec3(0.01, 0.14, 0.34);
+        vec3 mid = vec3(0.015, 0.4, 0.55);
+        vec3 shallow = vec3(0.1, 0.72, 0.64);
         vec3 wc = mix(shallow, mid, smoothstep(0.0, 2.5, depth));
         wc = mix(wc, deep, smoothstep(2.5, 12.0, depth));
         float light = 0.18 + 0.82 * uDay;
@@ -94,6 +98,9 @@ export function createWater(hf, heightTex, sky) {
         vec3 col = mix(wc, skyc, fres);
         float spec = pow(max(dot(R, uSunDir), 0.0), 600.0) * 6.0 + pow(max(dot(R, uSunDir), 0.0), 60.0) * 0.25;
         col += uSunColor * spec * uSunI;
+        // 水面のきらめき（小さな光の粒）
+        float gl = smoothstep(0.82, 0.98, vnoise(p * 3.2 + vec2(t0(uTime), -uTime * 0.21)) * vnoise(p * 5.1 - uTime * 0.17));
+        col += vec3(1.0, 0.98, 0.9) * gl * 0.45 * uDay * smoothstep(120.0, 10.0, dist);
 
         // 波打ち際の泡
         float t = uTime;
@@ -103,7 +110,7 @@ export function createWater(hf, heightTex, sky) {
         float foam = max(bands * 0.8, edge) * (0.55 + 0.45 * vnoise(p * 6.0 - t * 0.6));
         col = mix(col, vec3(0.92, 0.96, 1.0) * light, foam * 0.85);
 
-        float alpha = mix(0.25, 0.94, smoothstep(0.0, 3.0, depth));
+        float alpha = mix(0.18, 0.9, smoothstep(0.0, 3.5, depth));
         alpha = max(alpha, fres * 0.9);
         alpha = max(alpha, foam);
         alpha = mix(alpha, 1.0, smoothstep(150.0, 600.0, dist));

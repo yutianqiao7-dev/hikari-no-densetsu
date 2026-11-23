@@ -216,7 +216,7 @@ export function buildTerrain(hf, gltfTerrainMesh, sharedIn = null, biome = 'main
           vec2 tp = an.x > an.z ? vWPos.zy : vWPos.xy;
           float f1 = fbm3(tp * 0.22);
           // 岩肌の手描きテクスチャ（横から 2 方向の投影）。色はその場所の色に寄せる
-          vec3 rt = gTex(6.0, tp / 6.0);
+          vec3 rt = gTex(6.0, tp / 11.0);
           vec3 rockBase = mix(vec3(0.4, 0.38, 0.36), vc * 1.15 + 0.03, 0.62);
           vec3 rockC = rockBase * rt;
           rockC = mix(rockC, rockC * vec3(0.85, 0.95, 0.75), smoothstep(0.6, 0.8, f1) * 0.4);
@@ -239,7 +239,7 @@ export function buildTerrain(hf, gltfTerrainMesh, sharedIn = null, biome = 'main
           if (stp > 0.01) {
             vec3 an = abs(vWNrm);
             vec2 tp = an.x > an.z ? vWPos.zy : vWPos.xy;
-            vec3 rn = gNrm(6.0, tp / 6.0);
+            vec3 rn = gNrm(6.0, tp / 11.0);
             vec3 side = an.x > an.z ? vec3(0.0, rn.y, rn.x) : vec3(rn.x, rn.y, 0.0);
             bump += side * 1.4 * stp;
           }
