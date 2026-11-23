@@ -34,6 +34,8 @@ AI_CHARS = {
         sword=dict(bone='hand.L', length=0.92),
         face=dict(ref='hero.jpg', ref_eyes=((415.0, 178.75), (466.25, 178.75)),
                   eyes=((-0.01, 0.37), (0.042, 0.37)), low=0.73, chin=1.0, top=-0.55, ref_mouth=(445.0, 220.0)),
+        body=dict(ref='hero.jpg', ref_pts=((440.6, 178.75), (440.6, 1190.0)), model_pts=((0.016, 0.37), (0.016, -0.494)), bg='pink',
+                  skip=((0.25, 0.5, -0.55, 0.2),)),        # 絵の剣（作った剣に持ちかえたので）
         bones={
             'hips': ((0.03, -0.05, -0.04), (0.03, -0.05, 0.05), None),
             'spine': ((0.03, -0.05, 0.05), (0.03, -0.05, 0.15), 'hips'),
@@ -65,6 +67,8 @@ AI_CHARS = {
         # 顔：元の絵の両目（画素）と、モデルの両目（x, z）。low = 目より下を縦にのばす割合、chin = あご（目の間隔の何倍下か）
         face=dict(ref='milia_ref.jpg', ref_eyes=((450.0, 162.5), (506.25, 161.25)),
                   eyes=((-0.0192, 0.3496), (0.024, 0.3496)), low=1.3, chin=1.5, ref_mouth=(477.5, 199.0)),
+        body=dict(ref='milia_ref.jpg', ref_pts=((478.1, 161.9), (478.1, 1100.0)), model_pts=((0.0024, 0.3496), (0.0024, -0.505)), bg=None, nmin=0.4,
+                  skip=((-0.45, -0.19, -0.55, 0.6),)),     # 杖
         bones={
             'hips': ((0, -0.06, -0.06), (0, -0.06, 0.03), None),
             'spine': ((0, -0.06, 0.03), (0, -0.07, 0.12), 'hips'),
@@ -93,6 +97,9 @@ AI_CHARS = {
         crown=0.5, deform_cape=False,
         face=dict(ref='serena_ref.jpg', ref_eyes=((391.25, 185.0), (471.25, 180.0)),
                   eyes=((-0.0156, 0.352), (0.0552, 0.3652)), low=1.0, chin=0.92, ref_mouth=(436.25, 234.0)),
+        # 体全体：絵の（目の真ん中, 足の裏）とモデルの同じ所
+        body=dict(ref='serena_ref.jpg', ref_pts=((431.25, 182.5), (431.25, 1200.0)), model_pts=((0.0198, 0.3586), (0.0198, -0.49)), bg='pink',
+                  skip=((-0.4, -0.175, -0.5, 0.12), (-0.4, -0.2, -0.5, 0.6), (-0.4, -0.14, 0.13, 0.6))),     # 杖（絵とずれるので貼らない）
         bones={
             'hips': ((0.016, -0.06, -0.06), (0.016, -0.06, 0.03), None),
             'spine': ((0.016, -0.06, 0.03), (0.016, -0.06, 0.13), 'hips'),
@@ -263,6 +270,81 @@ def recolor_faces(ob, moved):
     print("recolor", len(inner), "faces", col)
 
 
+def paint_body(ob, spec):
+    """元の設定画を体の正面から貼る（服の線・模様をくっきりと）。正面から見えている面にだけ、背景の色はさける"""
+    import numpy as np
+    from mathutils.bvhtree import BVHTree
+    bd = spec.get('body')
+    if not bd:
+        return
+    me = ob.data
+    img = next(n for n in me.materials[0].node_tree.nodes if n.type == 'TEX_IMAGE').image
+    W, H = img.size
+    tex = np.array(img.pixels[:], dtype=np.float32).reshape(H, W, 4)
+    ref = bpy.data.images.load(os.path.join(IMPORT, bd['ref']))
+    RW, RH = ref.size
+    rpx = np.array(ref.pixels[:], dtype=np.float32).reshape(RH, RW, 4)
+    # 位置合わせ：絵の 2 点（目の真ん中・足の裏）とモデルの同じ 2 点
+    (ax, ay), (bx_, by_) = bd['ref_pts']
+    (mx0, mz0), (mx1, mz1) = bd['model_pts']
+    k = (by_ - ay) / (mz0 - mz1)              # 1m あたりの画素
+    def to_ref(X, Z):
+        return ax + (X - mx0) * k, ay - (Z - mz0) * k
+    bg = bd.get('bg')
+    def sample(rx, ry):
+        x = np.clip(rx - 0.5, 0, RW - 1.001)
+        y = np.clip((RH - 1) - (ry - 0.5), 0, RH - 1.001)
+        x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
+        fx, fy = (x - x0)[..., None], (y - y0)[..., None]
+        c = (rpx[y0, x0] * (1 - fx) * (1 - fy) + rpx[y0, x0 + 1] * fx * (1 - fy) +
+             rpx[y0 + 1, x0] * (1 - fx) * fy + rpx[y0 + 1, x0 + 1] * fx * fy)[..., :3]
+        ok = (rx > 1) & (rx < RW - 2) & (ry > 1) & (ry < RH - 2)
+        w = ok.astype(np.float32)
+        if bg in ('pink', 'white'):
+            r_, g_, b_ = c[..., 0], c[..., 1], c[..., 2]
+            white = (np.minimum(np.minimum(r_, g_), b_) > 0.9)
+            pink = (r_ > 0.82) & (b_ > 0.7) & (g_ < r_ - 0.06)
+            glow = (np.minimum(r_, g_) > 0.62) & (b_ < g_ - 0.08)          # 杖の光など、黄緑の明るいもや
+            w = w * (1.0 - (white | pink | glow).astype(np.float32))
+        return c, w
+    bvh = BVHTree.FromPolygons([v.co for v in me.vertices], [p.vertices[:] for p in me.polygons])
+    uvl = me.uv_layers.active.data
+    acc = np.zeros((H, W), np.float32)
+    col = np.zeros((H, W, 3), np.float32)
+    n_vis = 0
+    for p in me.polygons:
+        nmin = bd.get('nmin', 0.18)       # どれだけ正面を向いた面に貼るか（背景が絵にある子は大きく）
+        if len(p.vertices) != 3 or p.normal.y > -nmin:
+            continue
+        c = p.center
+        if any(x0 < c.x < x1 and z0 < c.z < z1 for (x0, x1, z0, z1) in bd.get('skip', ())):
+            continue
+        hit = bvh.ray_cast(Vector((c.x, -5.0, c.z)), Vector((0, 1, 0)))
+        if hit[0] is None or (hit[2] != p.index and (hit[0] - c).length > 0.004):
+            continue
+        n_vis += 1
+        nf = min(1.0, max(0.0, (-p.normal.y - nmin) / 0.35))
+        vs = [me.vertices[i].co for i in p.vertices]
+        P = np.array([(uvl[li].uv.x * W - 0.5, uvl[li].uv.y * H - 0.5) for li in p.loop_indices])
+        r = tri_texels(P, W, H)
+        if r is None:
+            continue
+        sl, ins, l1, l2, l3 = r
+        PX = l1 * vs[0].x + l2 * vs[1].x + l3 * vs[2].x
+        PZ = l1 * vs[0].z + l2 * vs[1].z + l3 * vs[2].z
+        rx, ry = to_ref(PX, PZ)
+        cc, ww = sample(rx, ry)
+        ww = ww * nf * ins
+        upd = ww > acc[sl]
+        acc[sl] = np.where(upd, ww, acc[sl])
+        col[sl] = np.where(upd[..., None], cc, col[sl])
+    tex[..., :3] = tex[..., :3] * (1 - acc[..., None]) + col * acc[..., None]
+    img.pixels.foreach_set(tex.ravel())
+    img.pack()
+    bpy.data.images.remove(ref)
+    print("body paint:", n_vis, "visible faces,", int((acc > 0.01).sum()), "texels")
+
+
 def paint_face(ob, spec):
     """元の絵の顔を、モデルの顔の正面から貼る（目・まゆ・鼻・口の線を絵のとおりに）"""
     import math
@@ -402,6 +484,7 @@ def build_ai(name, spec):
         recolor_faces(ob, moved)
     for box in spec.get('purge', ()):
         purge_color(ob, box)
+    paint_body(ob, spec)
     paint_face(ob, spec)
     # 足もとを原点に、背の高さをそろえる
     cx, cy = spec['center']
