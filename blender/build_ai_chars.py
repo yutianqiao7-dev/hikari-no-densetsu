@@ -342,6 +342,14 @@ def paint_body(ob, spec, key='body'):
         c = p.center
         if any(x0 < c.x < x1 and z0 < c.z < z1 for (x0, x1, z0, z1) in bd.get('skip', ())):
             continue
+        # 頭（あごから上）は貼らない：絵の耳・輪郭線・前髪がモデルの形とずれるので。顔は paint_face で目鼻口だけ
+        hd = spec.get('face')
+        if hd:
+            ex = (hd['eyes'][0][0] + hd['eyes'][1][0]) / 2
+            ez = (hd['eyes'][0][1] + hd['eyes'][1][1]) / 2
+            ed = abs(hd['eyes'][1][0] - hd['eyes'][0][0])
+            if c.z > ez - ed * (hd.get('chin', 1.0) + 0.1) and abs(c.x - ex) < ed * 2.6:
+                continue
         hit = bvh.ray_cast(Vector((c.x, 5.0 if back else -5.0, c.z)), Vector((0, -1 if back else 1, 0)))
         if hit[0] is None or (hit[2] != p.index and (hit[0] - c).length > 0.004):
             continue
@@ -397,8 +405,14 @@ def paint_face(ob, spec):
     exr = er / dr
     dnr = Vector((-exr.y, exr.x))
     low, vchin = f.get('low', 1.0), f['chin']
-    vtop = f.get('top', -0.72)      # 上はどこまで貼るか（前髪が絵にかかる子は狭く）
-    vc, hb = (vchin + vtop) / 2, (vchin - vtop) / 2
+    vtop = f.get('top', -0.62)      # 上はどこまで貼るか（まゆの上まで）
+    # 下は口の少し下まで（あごの輪郭線は貼らない）。横は目のはしの少し外まで（耳・顔の輪郭は貼らない）
+    dm_ = Vector(f['ref_mouth']) - midr
+    vm_ = dm_.dot(dnr) / dr
+    vm3 = vm_ if vm_ < 0.15 else 0.15 + (vm_ - 0.15) * low
+    vbot = min(vchin - 0.05, vm3 + 0.3)
+    uw = f.get('uw', 0.82)
+    vc, hb = (vbot + vtop) / 2, (vbot - vtop) / 2
 
     def to_ref(X, Z):
         px, pz = X - mid3.x, Z - mid3.y
@@ -407,8 +421,8 @@ def paint_face(ob, spec):
         vr = np.where(v < 0.15, v, 0.15 + (v - 0.15) / low)
         rx = midr.x + (u * exr.x + vr * dnr.x) * dr
         ry = midr.y + (u * exr.y + vr * dnr.y) * dr
-        r = np.sqrt((u / 0.95) ** 2 + ((v - vc) / hb) ** 2)
-        w = np.clip((1.0 - r) / 0.18, 0, 1)
+        r = np.sqrt((u / uw) ** 2 + ((v - vc) / hb) ** 2)
+        w = np.clip((1.0 - r) / 0.25, 0, 1)
         w = w * w * (3 - 2 * w)
         return rx, ry, w
 
@@ -466,19 +480,31 @@ def paint_face(ob, spec):
     if not m.any():
         print("face paint: no texels")
         return
-    # 肌の色をモデルにそろえる（線は残る）
-    core = acc > 0.9
-    gain = np.median(tex[core][:, :3], 0) / np.maximum(np.median(col[core], 0), 1e-3)
-    gain = np.clip(gain, 0.75, 1.3)
-    col = np.clip(col * (0.35 + 0.65 * gain), 0, 1)
-    tex[..., :3] = tex[..., :3] * (1 - acc[..., None]) + col * acc[..., None]
+    # 絵の肌の色のところは貼らず、モデルの肌をそのまま残す（境目が見えないように）。線・白目・瞳・まゆ・口だけ貼る
+    core = acc > 0.5
+    sk = col[core]
+    skm = sk[(sk[:, 0] > sk[:, 1]) & (sk[:, 1] > sk[:, 2]) & (sk[:, 0] > 0.55) & (sk[:, 0] - sk[:, 2] > 0.12)]
+    skin_ref = np.median(skm, 0) if len(skm) > 50 else np.array([0.95, 0.75, 0.62], np.float32)
+    dist = np.sqrt(((col - skin_ref) ** 2).sum(-1))
+    skinness = np.clip(1.0 - (dist - 0.06) / 0.16, 0, 1)
+    wfeat = acc * (1.0 - skinness)
+    # モデルの肌の色（元の目・まゆのような暗い所や白い所をのぞいた中央値）
+    mt = tex[core & (skinness > 0.6)][:, :3]
+    if len(mt):
+        ml = mt @ np.array([0.299, 0.587, 0.114], np.float32)
+        mt = mt[(ml > np.percentile(ml, 30)) & (ml < np.percentile(ml, 90)) & (mt[:, 0] > mt[:, 2])]
+    skin_m = np.median(mt, 0) if len(mt) > 20 else skin_ref
+    # 線の色は、モデルの肌の明るさになじむよう少しだけ寄せる
+    gain = np.clip(skin_m / np.maximum(skin_ref, 1e-3), 0.8, 1.2)
+    col = np.clip(col * (0.6 + 0.4 * gain), 0, 1)
+    # 貼る範囲の中は、まずモデルの肌の色でならす（AI が描いた元の目・まゆを消す）。その上に目鼻口の線と色
+    inner = col * wfeat[..., None] + skin_m * (1 - wfeat[..., None])
+    tex[..., :3] = tex[..., :3] * (1 - acc[..., None]) + inner * acc[..., None]
     img.pixels.foreach_set(tex.ravel())
     img.pack()
     bpy.data.images.remove(ref)
-    # まぶた・口の板に使う肌の色（絵の値のまま）
-    sk = col[core]
-    sk = sk[(sk[:, 0] > sk[:, 1]) & (sk[:, 1] > sk[:, 2]) & (sk[:, 0] > 0.55)]
-    f['_skin'] = tuple(np.median(sk, 0)) if len(sk) else (0.95, 0.75, 0.62)
+    # まぶた・口の板に使う肌の色：モデルの肌（貼らずに残した所）から
+    f['_skin'] = tuple(skin_m)
     print("face paint:", int(m.sum()), "texels, gain", gain)
 
 
