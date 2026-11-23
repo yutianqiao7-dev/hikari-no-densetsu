@@ -265,6 +265,9 @@ function detailKind(n) {
  * lock：その骨をどれだけ親といっしょに固めるか（1 = 腰に当てた手や杖を持つ手をそのままに）
  */
 const RETARGET = {
+  // 勇者・ガルド・町の人は、腕を少し開いた立ち姿（A ポーズ）で作ったので、固める骨はない
+  // 勇者（ユーザーのモデル）は腕を真横にのばした T ポーズなので、腕の骨の向きを共通の骨格（腕を下ろした形）にそろえる
+  Hero: { lock: { cape1: 1, cape2: 1 }, align: ['upper_armL', 'forearmL', 'handL', 'upper_armR', 'forearmR', 'handR'] },
   Milia: { lock: { upper_armL: 1, forearmL: 1, handL: 1, upper_armR: 0.55, forearmR: 0.85, handR: 1 } },
   Serena: { lock: { upper_armL: 1, forearmL: 1, handL: 1, upper_armR: 0.55, forearmR: 0.85, handR: 1, cape1: 1, cape2: 1 } },
 };
@@ -293,9 +296,18 @@ function makeRetarget(hero, root, cfg) {
       restC: restW(o, root),
       restSinv: restW(std[o.name], stdRoot).invert(),
       lock: (cfg.lock && cfg.lock[o.name]) || 0,
+      align: (cfg.align || []).includes(o.name),
       D: new THREE.Quaternion(), Ws: new THREE.Quaternion(), Wc: new THREE.Quaternion(),
     });
   });
+  // 向きをそろえる骨：休みの姿勢での骨の向き（骨の Y 軸）を、共通の骨格の向きに回す
+  for (const e of list) {
+    e.R = new THREE.Quaternion();
+    if (!e.align) continue;
+    const dc = new THREE.Vector3(0, 1, 0).applyQuaternion(e.restC);
+    const ds = new THREE.Vector3(0, 1, 0).applyQuaternion(e.restSinv.clone().invert());
+    e.R.setFromUnitVectors(dc.normalize(), ds.normalize());
+  }
   const hipS = sh.position.clone(), hipC = cusHips.position.clone();
   const ratio = hipC.length() / Math.max(hipS.length(), 1e-4);
   const tmp = new THREE.Quaternion(), ID = new THREE.Quaternion(), dp = new THREE.Vector3();
@@ -307,7 +319,7 @@ function makeRetarget(hero, root, cfg) {
         e.Ws.copy(e.parent ? e.parent.Ws : ID).multiply(e.s.quaternion);
         e.D.copy(e.Ws).multiply(e.restSinv);
         if (e.lock && e.parent) e.D.slerp(e.parent.D, e.lock);
-        e.Wc.copy(e.D).multiply(e.restC);
+        e.Wc.copy(e.D).multiply(e.R).multiply(e.restC);
         tmp.copy(e.parent ? e.parent.Wc : ID).invert();
         e.c.quaternion.copy(tmp.multiply(e.Wc));
       }
@@ -440,7 +452,8 @@ export class ModelLibrary {
     root.rotation.set(0, 0, 0);
     root.updateMatrixWorld(true);
     // AI で作ったモデルは骨の向きが共通の骨格とちがうので、見えない共通の骨格を動かして回転の差を移す
-    const rt = RETARGET[name] && this.templates.Hero ? makeRetarget(this.templates.Hero, root, RETARGET[name]) : null;
+    const stdT = this.templates.StdRig || this.templates.Hero;     // 共通の骨格（アニメーションの元）
+    const rt = RETARGET[name] && stdT ? makeRetarget(stdT, root, RETARGET[name]) : null;
     const mixer = new THREE.AnimationMixer(rt ? rt.stdRoot : root);
     const actions = {};
     for (const [k, clip] of Object.entries(this.clips)) actions[k] = mixer.clipAction(clip);

@@ -24,6 +24,37 @@ if _here not in sys.path:
 # 関節の位置（読み込んだモデルの座標。前は -y、上は z）
 # center: 体の中心 (x, y)、sole: 足の裏の高さ、crown: 頭のてっぺん、height: ゲームでの背の高さ（m）
 AI_CHARS = {
+    # 勇者：ユーザーが用意した絵（import/hero.jpg）とモデル（import/hero.glb）。腕を真横にのばした T ポーズ
+    'Hero': dict(
+        file='hero.glb', center=(0.03, -0.05), sole=-0.494, height=1.74, x_offset=-2.0,
+        crown=0.494, deform_cape=True,
+        # 剣のそばに残った背景（ピンク）を消す：(x0, x1, z0, z1)
+        purge=((0.21, 0.46, -0.53, -0.27, 'all'), (-0.12, 0.0, 0.28, 0.45, 'pink'), (0.03, 0.14, 0.4, 0.52, 'pink')),
+        face=dict(ref='hero.jpg', ref_eyes=((415.0, 178.75), (466.25, 178.75)),
+                  eyes=((-0.01, 0.37), (0.042, 0.37)), low=0.73, chin=1.0, top=-0.55, ref_mouth=(445.0, 220.0)),
+        bones={
+            'hips': ((0.03, -0.05, -0.04), (0.03, -0.05, 0.05), None),
+            'spine': ((0.03, -0.05, 0.05), (0.03, -0.05, 0.15), 'hips'),
+            'chest': ((0.03, -0.05, 0.15), (0.03, -0.05, 0.27), 'spine'),
+            'neck': ((0.03, -0.05, 0.27), (0.03, -0.06, 0.315), 'chest'),
+            'head': ((0.03, -0.06, 0.315), (0.03, -0.06, 0.494), 'neck'),
+            'shoulder.R': ((0.015, -0.05, 0.265), (-0.078, -0.05, 0.255), 'chest'),
+            'upper_arm.R': ((-0.078, -0.05, 0.255), (-0.218, -0.05, 0.24), 'shoulder.R'),
+            'forearm.R': ((-0.218, -0.05, 0.24), (-0.338, -0.05, 0.232), 'upper_arm.R'),
+            'hand.R': ((-0.338, -0.05, 0.232), (-0.4, -0.05, 0.232), 'forearm.R'),
+            'shoulder.L': ((0.045, -0.05, 0.265), (0.12, -0.05, 0.255), 'chest'),
+            'upper_arm.L': ((0.12, -0.05, 0.255), (0.244, -0.05, 0.24), 'shoulder.L'),
+            'forearm.L': ((0.244, -0.05, 0.24), (0.32, -0.05, 0.232), 'upper_arm.L'),
+            'hand.L': ((0.32, -0.05, 0.232), (0.37, -0.05, 0.225), 'forearm.L'),
+            'thigh.L': ((0.105, -0.05, -0.04), (0.105, -0.06, -0.218), 'hips'),
+            'shin.L': ((0.105, -0.06, -0.218), (0.11, -0.06, -0.416), 'thigh.L'),
+            'foot.L': ((0.11, -0.06, -0.416), (0.11, -0.12, -0.49), 'shin.L'),
+            'thigh.R': ((-0.035, -0.05, -0.04), (-0.04, -0.06, -0.218), 'hips'),
+            'shin.R': ((-0.04, -0.06, -0.218), (-0.04, -0.06, -0.416), 'thigh.R'),
+            'foot.R': ((-0.04, -0.06, -0.416), (-0.04, -0.12, -0.49), 'shin.R'),
+            'cape.1': ((0.03, 0.02, 0.25), (0.03, 0.06, -0.05), 'chest'),
+            'cape.2': ((0.03, 0.06, -0.05), (0.03, 0.1, -0.45), 'cape.1'),
+        }),
     'Milia': dict(
         file='milia.glb', center=(0.0, -0.07), sole=-0.505, height=1.62, x_offset=-2.0 - 9 * 1.5,
         crown=0.43, deform_cape=True, flatten=((-0.045, 0.045, 0.383, 0.45, -0.145),),
@@ -87,6 +118,17 @@ AI_CHARS = {
 
 
 def remove_old(name):
+    # 勇者の骨格には、全員で使うアニメーション（NLA）がのっている。消さずに「StdRig」として残す
+    hero = bpy.data.objects.get('Hero')
+    if name == 'Hero' and hero and hero.type == 'ARMATURE' and hero.animation_data and hero.animation_data.nla_tracks:
+        old = bpy.data.objects.get('StdRig')
+        if old:
+            bpy.data.objects.remove(old)
+        std = hero
+        for ch in list(std.children):
+            bpy.data.objects.remove(ch)
+        std.name = 'StdRig'
+        std.data.name = 'StdRig_Rig'
     for ob in list(bpy.data.objects):
         if ob.name == name or ob.name.startswith(name + "_"):
             bpy.data.objects.remove(ob)
@@ -101,6 +143,61 @@ def import_mesh(path):
         if o.type != 'MESH':
             bpy.data.objects.remove(o)
     return meshes[0]
+
+
+def purge_color(ob, box):
+    """箱の中で、テクスチャがピンク〜マゼンタ（背景の残り）の面を消す"""
+    import numpy as np
+    me = ob.data
+    img = next(n for n in me.materials[0].node_tree.nodes if n.type == 'TEX_IMAGE').image
+    W, H = img.size
+    tex = np.array(img.pixels[:], dtype=np.float32).reshape(H, W, 4)
+    uvl = me.uv_layers.active.data
+    x0, x1, z0, z1, mode = box
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.faces.ensure_lookup_table()
+    kill = []
+    for f, p in zip(bm.faces, me.polygons):
+        c = p.center
+        if not (x0 < c.x < x1 and z0 < c.z < z1):
+            continue
+        u = sum((uvl[li].uv for li in p.loop_indices), Vector((0, 0))) / len(p.loop_indices)
+        r, g, b = tex[min(int(u.y * H), H - 1), min(int(u.x * W), W - 1), :3]
+        if mode == 'all' or (r > g + 0.06 and b > g + 0.02):
+            kill.append(f)
+    if mode == 'all':
+        bmesh.ops.delete(bm, geom=kill, context='FACES')
+        bm.to_mesh(me)
+        bm.free()
+        print("purge", len(kill), "faces")
+        return
+    # 'pink'：消すと穴があくので、まわりの色（ピンクでない面）でぬりつぶす
+    kidx = set(f.index for f in kill)
+    bm.free()
+    samp = []
+    for p in me.polygons:
+        c = p.center
+        if p.index in kidx or not (x0 - 0.03 < c.x < x1 + 0.03 and z0 - 0.03 < c.z < z1 + 0.03):
+            continue
+        u = sum((uvl[li].uv for li in p.loop_indices), Vector((0, 0))) / len(p.loop_indices)
+        col = tex[min(int(u.y * H), H - 1), min(int(u.x * W), W - 1), :3]
+        if not (col[0] > col[1] + 0.06 and col[2] > col[1] + 0.02) and col.mean() < 0.45:
+            samp.append(col)
+    if not samp:
+        return
+    fill = np.median(np.array(samp), 0)
+    for p in me.polygons:
+        if p.index not in kidx or len(p.loop_indices) != 3:
+            continue
+        P = np.array([(uvl[li].uv.x * W - 0.5, uvl[li].uv.y * H - 0.5) for li in p.loop_indices])
+        rr = tri_texels(P, W, H)
+        if rr is None:
+            continue
+        sl, ins = rr[0], rr[1]
+        tex[sl][ins, :3] = fill
+    img.pixels.foreach_set(tex.ravel())
+    print("pink fix", len(kidx), "faces", fill)
 
 
 def tri_texels(P, W, H, pad=1.5):
@@ -193,7 +290,7 @@ def paint_face(ob, spec):
     exr = er / dr
     dnr = Vector((-exr.y, exr.x))
     low, vchin = f.get('low', 1.0), f['chin']
-    vtop = -0.72
+    vtop = f.get('top', -0.72)      # 上はどこまで貼るか（前髪が絵にかかる子は狭く）
     vc, hb = (vchin + vtop) / 2, (vchin - vtop) / 2
 
     def to_ref(X, Z):
@@ -301,6 +398,8 @@ def build_ai(name, spec):
                 moved.add(v.index)
     if moved:
         recolor_faces(ob, moved)
+    for box in spec.get('purge', ()):
+        purge_color(ob, box)
     paint_face(ob, spec)
     # 足もとを原点に、背の高さをそろえる
     cx, cy = spec['center']
