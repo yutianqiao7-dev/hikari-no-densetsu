@@ -376,6 +376,63 @@ def paint_body(ob, spec, key='body'):
     print(key, "paint:", n_vis, "visible faces,", int((acc > 0.01).sum()), "texels")
 
 
+def smooth_face(ob, spec, M):
+    """顔の面をなめらかにする（AI の顔のでこぼこ・鼻やくちびるの盛り上がりをならす）。
+    奥行き（y）だけを動かすので、顔の輪郭や絵の位置合わせは変わらない。顔の範囲は FaceMask の重みとして残す"""
+    import math
+    f = spec.get('face')
+    if not f:
+        return
+    me = ob.data
+    me.update()
+    # 目の位置（読みこんだときの座標）を、足もと原点・ゲームの大きさの座標に
+    def tf(p):
+        q = M @ Vector((p[0], 0.0, p[1]))
+        return Vector((q.x, q.z))
+    L3, R3 = tf(f['eyes'][0]), tf(f['eyes'][1])
+    mid = (L3 + R3) / 2
+    e = R3 - L3
+    d = e.length
+    ex = e / d
+    dn = Vector((ex.y, -ex.x))
+    vchin = f['chin']
+    n = len(me.vertices)
+    w = [0.0] * n
+    for v in me.vertices:
+        if v.normal.y > -0.15:
+            continue
+        px, pz = v.co.x - mid.x, v.co.z - mid.y
+        u = (px * ex.x + pz * ex.y) / d
+        vv = (px * dn.x + pz * dn.y) / d
+        # 目の上（まゆの上）からあご先まで、横は目のはしの外まで
+        top, bot = -0.75, vchin + 0.05
+        vc, hb = (top + bot) / 2, (bot - top) / 2
+        r = math.sqrt((u / 1.05) ** 2 + ((vv - vc) / hb) ** 2)
+        t = max(0.0, min(1.0, (1.0 - r) / 0.3))
+        nf = max(0.0, min(1.0, (-v.normal.y - 0.15) / 0.3))
+        w[v.index] = t * t * (3 - 2 * t) * nf
+    nb = [[] for _ in range(n)]
+    for ed in me.edges:
+        a, b = ed.vertices
+        nb[a].append(b)
+        nb[b].append(a)
+    act = [i for i in range(n) if w[i] > 0.01]
+    ys = [v.co.y for v in me.vertices]
+    for it in range(45):
+        ny = ys[:]
+        for i in act:
+            if nb[i]:
+                avg = sum(ys[j] for j in nb[i]) / len(nb[i])
+                ny[i] = ys[i] + (avg - ys[i]) * 0.6 * w[i]
+        ys = ny
+    for i in act:
+        me.vertices[i].co.y = ys[i]
+    g = ob.vertex_groups.get('FaceMask') or ob.vertex_groups.new(name='FaceMask')
+    for i in act:
+        g.add([i], w[i], 'REPLACE')
+    print("smooth face:", len(act), "verts")
+
+
 def paint_face(ob, spec):
     """元の絵の顔を、モデルの顔の正面から貼る（目・まゆ・鼻・口の線を絵のとおりに）"""
     import math
@@ -555,6 +612,7 @@ def build_ai(name, spec):
     bm.free()
     for e in me.edges:
         e.use_edge_sharp = False
+    smooth_face(ob, spec, M)
     # 材質・絵の名前（ゲームのトゥーン処理は名前で見分ける）
     for i, m in enumerate(me.materials):
         m.name = name + "_Look" + (str(i) if i else "")

@@ -56,6 +56,16 @@ if True:
         except Exception as e:
             print("bake failed", ob.name, e)
         ob.select_set(False, view_layer=vl)
+        # 顔（FaceMask の重みのある所）は、すき間の陰を明るく戻す（前髪の下などが黒ずまないように）
+        fm = ob.vertex_groups.get('FaceMask')
+        if fm is not None:
+            gi = fm.index
+            for v in me.vertices:
+                fw = next((g.weight for g in v.groups if g.group == gi), 0.0)
+                if fw > 0.0:
+                    c = attr.data[v.index].color
+                    k = min(1.0, fw * 1.3)
+                    attr.data[v.index].color = (c[0] + (1 - c[0]) * k, c[1] + (1 - c[1]) * k, c[2] + (1 - c[2]) * k, c[3])
         if i % 20 == 0:
             print(f"AO {i + 1}/{len(meshes)}  {time.time() - t0:.0f}s")
 for a in arms:
