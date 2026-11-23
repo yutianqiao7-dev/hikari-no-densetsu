@@ -270,13 +270,35 @@ def recolor_faces(ob, moved):
     print("recolor", len(inner), "faces", col)
 
 
-def paint_body(ob, spec):
-    """元の設定画を体の正面から貼る（服の線・模様をくっきりと）。正面から見えている面にだけ、背景の色はさける"""
+def sharpen_texture(ob, amount=0.9, radius=2.0):
+    """AI の絵のぼやけを軽くする（輪郭を立たせる：アンシャープマスク）。色のにじみがふえないよう明るさだけに"""
+    import numpy as np
+    me = ob.data
+    img = next(n for n in me.materials[0].node_tree.nodes if n.type == 'TEX_IMAGE').image
+    W, H = img.size
+    tex = np.array(img.pixels[:], dtype=np.float32).reshape(H, W, 4)
+    L = tex[..., :3] @ np.array([0.299, 0.587, 0.114], np.float32)
+    r = int(radius * 3)
+    xs = np.arange(-r, r + 1, dtype=np.float32)
+    kern = np.exp(-(xs / radius) ** 2 / 2)
+    kern /= kern.sum()
+    bl = np.apply_along_axis(lambda v: np.convolve(v, kern, mode='same'), 1, L)
+    bl = np.apply_along_axis(lambda v: np.convolve(v, kern, mode='same'), 0, bl)
+    d = np.clip((L - bl) * amount, -0.25, 0.25)
+    tex[..., :3] = np.clip(tex[..., :3] + d[..., None], 0, 1)
+    img.pixels.foreach_set(tex.ravel())
+    print("sharpen", W, H)
+
+
+def paint_body(ob, spec, key='body'):
+    """元の設定画を体の正面（key='back' なら背中）から貼る（服の線・模様をくっきりと）。見えている面にだけ、背景の色はさける"""
     import numpy as np
     from mathutils.bvhtree import BVHTree
-    bd = spec.get('body')
+    bd = spec.get(key)
     if not bd:
         return
+    back = key == 'back'
+    sgn = -1.0 if back else 1.0           # 背中から見ると左右が逆
     me = ob.data
     img = next(n for n in me.materials[0].node_tree.nodes if n.type == 'TEX_IMAGE').image
     W, H = img.size
@@ -289,7 +311,7 @@ def paint_body(ob, spec):
     (mx0, mz0), (mx1, mz1) = bd['model_pts']
     k = (by_ - ay) / (mz0 - mz1)              # 1m あたりの画素
     def to_ref(X, Z):
-        return ax + (X - mx0) * k, ay - (Z - mz0) * k
+        return ax + sgn * (X - mx0) * k, ay - (Z - mz0) * k
     bg = bd.get('bg')
     def sample(rx, ry):
         x = np.clip(rx - 0.5, 0, RW - 1.001)
@@ -314,16 +336,17 @@ def paint_body(ob, spec):
     n_vis = 0
     for p in me.polygons:
         nmin = bd.get('nmin', 0.18)       # どれだけ正面を向いた面に貼るか（背景が絵にある子は大きく）
-        if len(p.vertices) != 3 or p.normal.y > -nmin:
+        ny = p.normal.y * (-1.0 if back else 1.0)
+        if len(p.vertices) != 3 or ny > -nmin:
             continue
         c = p.center
         if any(x0 < c.x < x1 and z0 < c.z < z1 for (x0, x1, z0, z1) in bd.get('skip', ())):
             continue
-        hit = bvh.ray_cast(Vector((c.x, -5.0, c.z)), Vector((0, 1, 0)))
+        hit = bvh.ray_cast(Vector((c.x, 5.0 if back else -5.0, c.z)), Vector((0, -1 if back else 1, 0)))
         if hit[0] is None or (hit[2] != p.index and (hit[0] - c).length > 0.004):
             continue
         n_vis += 1
-        nf = min(1.0, max(0.0, (-p.normal.y - nmin) / 0.35))
+        nf = min(1.0, max(0.0, (-ny - nmin) / 0.35))
         vs = [me.vertices[i].co for i in p.vertices]
         P = np.array([(uvl[li].uv.x * W - 0.5, uvl[li].uv.y * H - 0.5) for li in p.loop_indices])
         r = tri_texels(P, W, H)
@@ -342,7 +365,7 @@ def paint_body(ob, spec):
     img.pixels.foreach_set(tex.ravel())
     img.pack()
     bpy.data.images.remove(ref)
-    print("body paint:", n_vis, "visible faces,", int((acc > 0.01).sum()), "texels")
+    print(key, "paint:", n_vis, "visible faces,", int((acc > 0.01).sum()), "texels")
 
 
 def paint_face(ob, spec):
@@ -484,6 +507,7 @@ def build_ai(name, spec):
         recolor_faces(ob, moved)
     for box in spec.get('purge', ()):
         purge_color(ob, box)
+    sharpen_texture(ob)
     paint_body(ob, spec)
     paint_face(ob, spec)
     # 足もとを原点に、背の高さをそろえる
